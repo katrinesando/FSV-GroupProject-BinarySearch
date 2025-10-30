@@ -25,7 +25,7 @@ Notes:
 - The `-Q . <logical>` arguments map the current directory to a logical Coq path used inside the files. The project uses two logical paths: `project_lib` and `BstProject`.
 - The `_CoqProject` file in the repo lists the files and the `-Q` mappings that `coq_makefile`/`make` uses. If you edit file names, update `_CoqProject` accordingly.
 
-## Compatibility shim (why `NPeano` may appear)
+## Compatibility (why `NPeano` has been changed from original file)
 
 Older Software Foundations-style code used a module named `NPeano` and functions like `beq_nat`. Newer Coq versions use the `Nat` module and `Nat.eqb` and the file was therefore updated.
 
