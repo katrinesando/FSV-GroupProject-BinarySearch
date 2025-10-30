@@ -61,10 +61,40 @@ Proof.
   inversion H3. subst. inversion H7; subst. inversion H0.
 Qed.
 
+(* Exercise 3.4 *)
+Fixpoint elem_of (x:nat) (t:tree) : bool :=
+match t with
+| leaf => false
+| node l v r => 
+  if v =? x
+  then true 
+  else
+    if x <? v
+    then 
+      elem_of x l 
+    else
+      elem_of x r
+  (* More concise:
+    (v =? x) || 
+    (if x <? v then elem_of x l else elem_of x r)
+  *)
 
-Fixpoint elem_of (x:nat) (t:tree) : bool 
-(* TODO: implement elem_of *)
-. Admitted.
+end.
+
+
+(* Positive tests *)
+Example tree_elem_of_16 : elem_of 16 tree1 = true.
+Proof. unfold tree1. reflexivity. Qed.
+
+Example tree_elem_of_2 : elem_of 2 tree1 = true.
+Proof. unfold tree1. reflexivity. Qed.
+
+(* Negative tests *)
+Example tree_elem_of_88 : elem_of 16 tree1 = true.
+Proof. unfold tree1. reflexivity. Qed.
+
+Example tree_elem_of_42 : elem_of 42 tree1 = false.
+Proof. unfold tree1. reflexivity. Qed.
 
 Fixpoint insert (x:nat) (t:tree) : tree 
 (* TODO: implement insert *)
