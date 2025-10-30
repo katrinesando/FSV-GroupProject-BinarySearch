@@ -1,0 +1,8 @@
+* text=auto
+
+*.v text
+*.json text
+*.yml text
+*.md text
+_CoqProject text
+Makefile text
