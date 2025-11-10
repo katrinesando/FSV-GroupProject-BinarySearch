@@ -90,7 +90,7 @@ Example tree_elem_of_2 : elem_of 2 tree1 = true.
 Proof. unfold tree1. reflexivity. Qed.
 
 (* Negative tests *)
-Example tree_elem_of_88 : elem_of 16 tree1 = true.
+Example tree_elem_of_88 : elem_of 88 tree1 = false.
 Proof. unfold tree1. reflexivity. Qed.
 
 Example tree_elem_of_42 : elem_of 42 tree1 = false.
