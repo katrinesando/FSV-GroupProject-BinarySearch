@@ -1,7 +1,7 @@
 Require Import Coq.Arith.Arith.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Init.Nat.
-
+Require Import Lia.
 
 
 Inductive tree :=
@@ -152,7 +152,6 @@ Proof.
       * apply IHl; easy.
 Qed.
 
-
 Lemma greater_insert : forall n x t,
   greater n t -> n > x -> greater n (insert x t).
 Proof.
@@ -186,10 +185,9 @@ Proof.
         -- apply IHt2; assumption.
       (* Insert right *)
       * constructor; try easy.
-        -- eapply greater_insert; try easy. Search(_<?_ = false). rewrite Nat.ltb_nlt in Hneq. admit.
+        --  rewrite Nat.ltb_nlt in Hneq. assert (x < n) by (apply Nat.eqb_neq in Heq; lia). eapply greater_insert; try easy.
         -- apply IHt1; assumption.
-Admitted.
-
+Qed.
 
 (* Exercise 3.9 *)
 Lemma insert_correct :
@@ -211,13 +209,14 @@ Proof.
     + destruct (n<?x) eqn:Hneq.
       * simpl. destruct (n=?y) eqn:Heqny.
         -- reflexivity.
-        -- destruct (y<?n).
-          --- admit.
+        -- destruct (y<?n) eqn:Hyn.
+            (* Skal bruge Hyn for at finde at y < n < x -> y < x*)
+          --- rewrite Nat.ltb_lt in Hyn. rewrite Nat.ltb_lt in Hneq. assert (x <> y) by lia. apply Nat.eqb_neq in H0. rewrite H0. Search (_||_). rewrite Bool.orb_false_r. reflexivity.
           --- apply IHt2. assumption.
       * simpl. destruct (n=?y).
         -- reflexivity.
-        -- destruct (y<?n).
+        -- destruct (y<?n) eqn:Hyn.
           --- apply IHt1. assumption.
-          --- admit.
+          --- rewrite Nat.ltb_nlt in Hyn, Hneq. rewrite <- (IHt2 x y H6). admit.
 Admitted.  
   
