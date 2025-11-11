@@ -211,12 +211,12 @@ Proof.
         -- reflexivity.
         -- destruct (y<?n) eqn:Hyn.
             (* Skal bruge Hyn for at finde at y < n < x -> y < x*)
-          --- rewrite Nat.ltb_lt in Hyn. rewrite Nat.ltb_lt in Hneq. assert (x <> y) by lia. apply Nat.eqb_neq in H0. rewrite H0. Search (_||_). rewrite Bool.orb_false_r. reflexivity.
+          --- rewrite Nat.ltb_lt in Hyn. rewrite Nat.ltb_lt in Hneq. assert (x <> y) by lia. Search (_<>_). apply Nat.eqb_neq in H0. rewrite H0. Search (_||_). rewrite Bool.orb_false_r. reflexivity.
           --- apply IHt2. assumption.
       * simpl. destruct (n=?y).
         -- reflexivity.
         -- destruct (y<?n) eqn:Hyn.
           --- apply IHt1. assumption.
-          --- rewrite Nat.ltb_nlt in Hyn, Hneq. rewrite <- (IHt2 x y H6). admit.
-Admitted.  
+          --- rewrite Nat.ltb_nlt in Hyn, Hneq. assert (x <> y) by (apply Nat.eqb_neq in Heq; lia). apply Nat.eqb_neq in H0. rewrite H0. rewrite Bool.orb_false_r. reflexivity.
+Qed.
   
