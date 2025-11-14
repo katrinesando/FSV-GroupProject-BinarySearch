@@ -78,9 +78,7 @@ match t with
     (v =? x) || 
     (if x <? v then elem_of x l else elem_of x r)
   *)
-
 end.
-
 
 (* Positive tests *)
 Example tree_elem_of_16 : elem_of 16 tree1 = true.
@@ -107,7 +105,6 @@ match t with
   else
   node (insert x l) v r
 end.
-
 
 Example insert_empty : insert 42 leaf = (node leaf 42 leaf).
 Proof.
@@ -185,7 +182,7 @@ Proof.
         -- apply IHt2; assumption.
       (* Insert right *)
       * constructor; try easy.
-        --  rewrite Nat.ltb_nlt in Hneq. assert (x < n) by (apply Nat.eqb_neq in Heq; lia). eapply greater_insert; try easy.
+        -- rewrite Nat.ltb_nlt in Hneq. assert (x < n) by (apply Nat.eqb_neq in Heq; lia). eapply greater_insert; try easy.
         -- apply IHt1; assumption.
 Qed.
 
@@ -220,3 +217,4 @@ Proof.
           --- rewrite Nat.ltb_nlt in Hyn, Hneq. assert (x <> y) by (apply Nat.eqb_neq in Heq; lia). apply Nat.eqb_neq in H0. rewrite H0. rewrite Bool.orb_false_r. reflexivity.
 Qed.
   
+
