@@ -255,16 +255,18 @@ Proof.
   (* First: smaller m r from successor_all_right *)
   apply smaller_delete_any.
   eapply successor_all_right; eauto. *)
-  revert m Hsucc.
-  induction r; intros m Hsucc; simpl in *; try discriminate.
+  revert m Hsucc Hsort.
+  induction r; intros; simpl in *; try discriminate.
   inversion Hsort; subst.
   destruct r1.
   - (* right subtree root is the successor, delete removes it and returns r2 *)
-    inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
+     simpl. inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
   - (* successor comes from the left subtree *)
+    destruct (n=?m) eqn:Hnm.
+    + rewrite Nat.eqb_eq in Hnm; subst. inversion H2; subst. inversion H3; subst. inversion H4; subst. 
+      * constructor.
     
-    simpl in Hsucc. admit.
-Admitted.    
+Admitted.
 
 Lemma delete_sorted :
   forall t x, sorted t -> sorted (delete x t).
