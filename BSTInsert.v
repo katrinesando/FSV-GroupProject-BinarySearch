@@ -95,7 +95,7 @@ Proof.
     try eauto. try lia. admit. *)
      (* successor in left subtree *)
     injection Hsucc as <-. constructor; try eauto.
-    + contradiction. exfalso. admit.
+    + admit.
     (* + assumption. *)
   - (* successor in left subtree *)
     admit. 
@@ -237,8 +237,9 @@ Proof.
   inversion Hsort; subst.
   destruct r1.
   - (* right subtree root is the successor, delete removes it and returns r2 *)
-    inversion Hsucc; subst. simpl. eauto. admit.
+    inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
   - (* successor comes from the left subtree *)
+    
     simpl in Hsucc. admit.
 Admitted.    
     (* assert (m < v) as Hmv.
@@ -263,10 +264,7 @@ Proof.
     destruct (n =? x) eqn:Heq.
     + (* deleting root *)
       destruct t1.
-      * (* no left subtree *)
-        destruct t2.
-        -- (* no right subtree: tree becomes leaf *) constructor.
-        -- (* one-child right: node leaf n0 t2_2 becomes t2 *) assumption.
+      * assumption. (* no left subtree *)
       * destruct t2.
         -- (* one-child left *) assumption.
         -- (* two children *)
