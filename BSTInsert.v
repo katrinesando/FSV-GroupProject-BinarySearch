@@ -132,42 +132,7 @@ Qed.
    is >= the successor. We state this using [elem_of] for membership. This is
    the correct non-strict property (the strict version `smaller m r` is false
    when the successor equals the root value). *)
-(* Lemma successor_min_le_all :
-  forall r m,
-    sorted r ->
-    successor r = Some m ->
-    forall y, elem_of y r = true -> m <= y.
-Proof.
-  induction r; intros m Hsrt Hsucc y Hy; simpl in *; try discriminate.
-  inversion Hsrt; subst.
-  destruct r1.
-  - (* left = leaf, successor is the root value *)
-    injection Hsucc as <-. simpl in Hy.
-    destruct (n =? y) eqn:E.
-    + apply Nat.eqb_eq in E. subst. lia.
-    + (* y is in the right subtree *)
-      simpl in Hy. destruct (y <? n) eqn:Hylt; simpl in Hy; try discriminate.
-      (* From smaller n r2 we have n < y, hence n <= y *)
-      inversion H5; subst; admit.
-  - (* successor comes from left subtree *)
-    simpl in Hsucc. simpl in Hy.
-    destruct (n =? y) eqn:Ey.
-    + (* y is the root value: need m <= n *)
-      apply Nat.eqb_eq in Ey as Heqny. rewrite Heqny in *.
-      (* m is an element of the left subtree and all elements of the left
-         subtree are < n, so m < n *)
-         eauto. apply IHr2; try eauto; try lia; admit.
-      (* assert (m < n) by (eapply successor_from_left_lt_parent; eauto). *)
-      (* lia. *)
-    + (* y is in left or right subtree; analyze elem_of branch *)
-      destruct (y <? n) eqn:Hylt.
-      * (* y in left: apply IH on left subtree *)
-        apply IHr1; try assumption.
-        (* simpl in Hy. rewrite Ey in Hy. discriminate. *)
-      * (* y in right: then n < y and m < n -> m < y *)
-        inversion H5; subst. admit.
-Admitted. *)
-
+ 
 Lemma delete_unfold_node (x v : nat) (l r : tree) :
   delete x (node l v r) =
     if v =? x then
@@ -279,7 +244,6 @@ Proof.
       * constructor; try assumption; apply IHt2; assumption.
 Admitted.
 
-(* After deleting the successor from r, remaining elements are > successor *)
 Lemma successor_smaller_right_after_delete :
   forall r m,
     sorted r ->
@@ -287,26 +251,20 @@ Lemma successor_smaller_right_after_delete :
     smaller m (delete m r).
 Proof.
   intros r m Hsort Hsucc.
+  (*
+  (* First: smaller m r from successor_all_right *)
+  apply smaller_delete_any.
+  eapply successor_all_right; eauto. *)
   revert m Hsucc.
   induction r; intros m Hsucc; simpl in *; try discriminate.
   inversion Hsort; subst.
   destruct r1.
   - (* right subtree root is the successor, delete removes it and returns r2 *)
-    inversion Hsucc; subst. simpl. eauto. admit.
+    inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
   - (* successor comes from the left subtree *)
+    
     simpl in Hsucc. admit.
 Admitted.    
-    (* assert (m < v) as Hmv.
-    { (* successor from left is < v because all elements of left are < v *)
-      eapply successor_lt_root_left with (l:=r1) (r:=r2); eauto.
-    }
-    assert (v =? m = false) by (apply Nat.eqb_neq; lia).
-    assert (m <? v = true) by (apply Nat.ltb_lt; auto).
-    rewrite H0, H1. clear H0 H1.
-    constructor; try assumption.
-    + (* m < v *) exact Hmv.
-    + (* smaller m r2 via transitivity m < v and smaller v r2 *)
-      eapply smaller_lift_right; eauto. *)
 
 Lemma delete_sorted :
   forall t x, sorted t -> sorted (delete x t).
@@ -317,10 +275,7 @@ Proof.
     destruct (n =? x) eqn:Heq.
     + (* deleting root *)
       destruct t1.
-      * (* no left subtree *)
-        destruct t2.
-        -- (* no right subtree: tree becomes leaf *) constructor.
-        -- (* one-child right: node leaf n0 t2_2 becomes t2 *) assumption.
+      * assumption. (* no left subtree *)
       * destruct t2.
         -- (* one-child left *) assumption.
         -- (* two children *)
