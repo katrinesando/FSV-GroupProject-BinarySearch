@@ -95,6 +95,22 @@ Proof.
     + apply IHt2; assumption.
 Qed.
 
+
+Lemma smaller_lift_right :
+  forall m v t,
+    m < v ->
+    smaller v t ->
+    smaller m t.
+Proof.
+  induction t; intros Hlt Hsm; simpl.
+  - constructor.
+  - inversion Hsm; subst.
+    constructor.
+    + lia.
+    + apply IHt1; assumption.
+    + apply IHt2; assumption.
+Qed.
+
 (* If the parent ensures all elements of r are > v (smaller v r), then the
    leftmost/successor element of r is strictly greater than v. *)
 Lemma successor_min_greater_than_parent :
@@ -308,8 +324,16 @@ Proof.
   - (* right subtree root is the successor, delete removes it and returns r2 *)
     inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
   - (* successor comes from the left subtree *)
-    simpl in Hsucc. admit.
-Admitted.    
+    simpl in Hsucc. 
+    assert (n > m) by (eapply greater_than_successor; eauto).
+    assert (m < n) by lia.
+    destruct (n =? m) eqn:Heq.
+    +  apply Nat.eqb_eq in Heq; subst. lia.
+    +  assert (m <? n = true) as Hlt by (apply Nat.ltb_lt; lia).
+      rewrite Hlt; simpl.
+      constructor; try eauto.
+      * eapply smaller_lift_right; try eauto.
+Qed.
 
 Lemma delete_sorted :
   forall t x, sorted t -> sorted (delete x t).
