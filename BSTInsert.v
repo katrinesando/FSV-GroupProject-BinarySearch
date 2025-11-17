@@ -164,29 +164,6 @@ Proof.
   - eapply successor_min_greater_than_parent; eauto.
 Qed.
 
-(* Delete preserves 'smaller' when we delete ANY x (except root collapse case is handled by pattern) *)
-Lemma smaller_delete_any :
-  forall n x t,
-    smaller n t ->
-    smaller n (delete x t).
-Proof.
-  induction t; intros; simpl.
-  - assumption.
-  - inversion H; subst.
-    destruct (n0 =? x) eqn:Heq.
-    + (* deleting root *)
-      destruct t1, t2; simpl; try assumption.
-      (* two-child case: rebuilding root with successor; need smaller n new_tree *)
-      all: destruct (successor (node t2_1 n0 t2_2)) eqn:Hsucc; try assumption.
-      * (* Successor found *)
-        admit.
-      * (* No successor: impossible since right has at least root *)
-        simpl in Hsucc. admit.
-    + destruct (x <? n0) eqn:Hlt.
-      * constructor; try assumption; apply IHt1; assumption.
-      * constructor; try assumption; apply IHt2; assumption.
-Admitted.
-
 (* Helper: if n > all elements of t, then n > successor of t *)
 Lemma greater_than_successor :
   forall n t m,
@@ -203,12 +180,78 @@ Proof.
     eapply IHt1; eauto.
 Qed.
 
+Lemma smaller_than_successor :
+  forall n t m,
+    smaller n t ->
+    successor t = Some m ->
+    n < m.
+Proof.
+  induction t; intros m Hgt Hsucc; simpl in *; try discriminate.
+  inversion Hgt; subst.
+  destruct t1.
+  - (* successor is the root *)
+    injection Hsucc as <-. assumption.
+  - (* successor in left subtree *)
+    eapply IHt1; eauto.
+Qed.
+
+(* Delete preserves 'smaller' when we delete ANY x (except root collapse case is handled by pattern) *)
+Lemma smaller_delete :
+  forall n x t,
+    smaller n t ->
+    smaller n (delete x t).
+Proof.
+  intros n x t.
+  generalize dependent x.
+  induction t; intros; simpl.
+  - assumption.
+  - inversion H; subst.
+    destruct (n0 =? x) eqn:Heq.
+    + (* deleting root *)
+      destruct t1, t2; simpl; try assumption. 
+      destruct (successor (node t2_1 n2 t2_2)) eqn:Hsucc.
+      * (* successor found: n3 *)
+        destruct t2_1; simpl in *.
+        -- (* t2_1 = leaf, so successor is n2 *)
+           injection Hsucc as <-. simpl.
+           constructor.
+           ++ (* n > n2 *)
+              eapply smaller_than_successor; eauto.
+           ++ (* greater n left *)
+              assumption.
+           ++ (* greater n t2_2 *)
+              inversion H6; subst. 
+              rewrite (Nat.eqb_refl n2). eauto.
+        -- (* t2_1 = node, successor from left subtree *)
+            simpl in Hsucc. rewrite Hsucc. constructor. 
+           ++ (* n > n3 *)
+              eapply smaller_than_successor; eauto.
+           ++ (* greater n left *)
+              assumption.
+           ++ (* greater n (delete n3 right) *)
+           eapply IHt2. eauto.
+      * (* no successor: impossible *)
+        destruct t2_1; simpl; simpl in *. 
+        ++ discriminate Hsucc.
+        ++ destruct t2_1_1.
+          --- inversion Hsucc; subst.
+          --- simpl in *. rewrite Hsucc. eauto.
+    + (* not deleting root *)
+      destruct (x <? n0) eqn:Hlt.
+      * constructor; try assumption; apply IHt1; assumption.
+      * constructor; try assumption; apply IHt2; assumption.
+Qed.
+
 Lemma greater_delete :
   forall n x t,
     greater n t ->
     greater n (delete x t).
 Proof.
-  induction t; intros; simpl.
+  (* Generalize [n] and [x] so the IHs can be instantiated with the
+     successor value when the recursive delete removes a different key. *)
+  intros n x t.
+  generalize dependent x.
+  induction t; intros x H; simpl.
   - assumption.
   - inversion H; subst.
     destruct (n0 =? x) eqn:Heq.
@@ -228,21 +271,24 @@ Proof.
               inversion H6; subst. 
               rewrite (Nat.eqb_refl n2). eauto.
         -- (* t2_1 = node, successor from left subtree *)
-            admit.   
-        (* constructor.
+            simpl in Hsucc. rewrite Hsucc. constructor. 
            ++ (* n > n3 *)
               eapply greater_than_successor; eauto.
            ++ (* greater n left *)
               assumption.
            ++ (* greater n (delete n3 right) *)
-              apply IHt2. assumption. *)
+           eapply IHt2. eauto.
       * (* no successor: impossible *)
-        eauto. admit.
+        destruct t2_1; simpl; simpl in *. 
+        ++ discriminate Hsucc.
+        ++ destruct t2_1_1.
+          --- inversion Hsucc; subst.
+          --- simpl in *. rewrite Hsucc. eauto.
     + (* not deleting root *)
       destruct (x <? n0) eqn:Hlt.
       * constructor; try assumption; apply IHt1; assumption.
       * constructor; try assumption; apply IHt2; assumption.
-Admitted.
+Qed.
 
 Lemma successor_smaller_right_after_delete :
   forall r m,
@@ -253,7 +299,7 @@ Proof.
   intros r m Hsort Hsucc.
   (*
   (* First: smaller m r from successor_all_right *)
-  apply smaller_delete_any.
+  apply smaller_delete.
   eapply successor_all_right; eauto. *)
   revert m Hsucc.
   induction r; intros m Hsucc; simpl in *; try discriminate.
@@ -262,7 +308,6 @@ Proof.
   - (* right subtree root is the successor, delete removes it and returns r2 *)
     inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
   - (* successor comes from the left subtree *)
-    
     simpl in Hsucc. admit.
 Admitted.    
 
@@ -301,7 +346,7 @@ Proof.
         -- eapply IHt1; assumption.
       * (* delete in right *)
         constructor; try assumption.
-        -- eapply smaller_delete_any; eauto.
+        -- eapply smaller_delete; eauto.
         -- eapply IHt2; assumption.
 Qed.
 
