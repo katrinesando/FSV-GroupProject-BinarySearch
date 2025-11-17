@@ -12,8 +12,6 @@ Fixpoint bst_to_list (bst: tree) : list nat :=
   | node l v r => bst_to_list l ++ [v] ++ bst_to_list r
 end.
 
-
-
 Definition list_to_bst (lst: list nat) : tree :=
   fold_left(fun acc elem => insert elem acc) lst leaf.
 
@@ -80,26 +78,95 @@ Example delete_root : delete 10 tree1 =
 Proof. unfold delete. reflexivity. Qed.
 
 (* Lemmas to help prove sorted*)
+(* If a value is greater than all elements of a tree, and we increase the
+   value, it stays greater than all elements. *)
+Lemma greater_lift :
+  forall v m t,
+    greater v t ->
+    v < m ->
+    greater m t.
+Proof.
+  induction t; simpl; intros Hg Hlt.
+  - constructor.
+  - inversion Hg; subst.
+    constructor.
+    + lia.
+    + apply IHt1; assumption.
+    + apply IHt2; assumption.
+Qed.
+
+(* If the parent ensures all elements of r are > v (smaller v r), then the
+   leftmost/successor element of r is strictly greater than v. *)
+Lemma successor_min_greater_than_parent :
+  forall v r m,
+    smaller v r ->
+    successor r = Some m ->
+    v < m.
+Proof.
+  induction r; intros m Hsm Hsucc; simpl in *; try discriminate.
+  inversion Hsm; subst.
+  destruct r1.
+  - (* left = leaf: successor is the root of this node *)
+    injection Hsucc as <-. assumption.
+  - (* successor is in the left subtree *)
+    simpl in Hsucc. eapply IHr1; eauto.
+Qed.
+
+(* If the successor comes from a left subtree, it is strictly less than the
+   parent value (all elements of the left subtree are < parent). *)
+Lemma successor_from_left_lt_parent :
+  forall l v m,
+    greater v l ->
+    successor l = Some m ->
+    m < v.
+Proof.
+  induction l; intros v m Hgt Hsucc; simpl in *; try discriminate.
+  inversion Hgt; subst.
+  destruct l1.
+  - injection Hsucc as <-. assumption.
+  - eapply IHl1; eauto.
+Qed.
 
 (* Minimum value property in right subtree *)
-Lemma successor_all_right :
+(* The successor is a minimal element of the tree: every element of the tree
+   is >= the successor. We state this using [elem_of] for membership. This is
+   the correct non-strict property (the strict version `smaller m r` is false
+   when the successor equals the root value). *)
+(* Lemma successor_min_le_all :
   forall r m,
     sorted r ->
     successor r = Some m ->
-    smaller m r.
+    forall y, elem_of y r = true -> m <= y.
 Proof.
-  induction r; intros m Hsrt Hsucc; simpl in *; try discriminate.
-  destruct r1; inversion Hsrt; subst.
-  - (* left = leaf, root is successor *)
-    (* inversion Hsucc; subst m. constructor. 
-    try eauto. try lia. admit. *)
-     (* successor in left subtree *)
-    injection Hsucc as <-. constructor; try eauto.
-    + contradiction. exfalso. admit.
-    (* + assumption. *)
-  - (* successor in left subtree *)
-    admit. 
-Admitted.
+  induction r; intros m Hsrt Hsucc y Hy; simpl in *; try discriminate.
+  inversion Hsrt; subst.
+  destruct r1.
+  - (* left = leaf, successor is the root value *)
+    injection Hsucc as <-. simpl in Hy.
+    destruct (n =? y) eqn:E.
+    + apply Nat.eqb_eq in E. subst. lia.
+    + (* y is in the right subtree *)
+      simpl in Hy. destruct (y <? n) eqn:Hylt; simpl in Hy; try discriminate.
+      (* From smaller n r2 we have n < y, hence n <= y *)
+      inversion H5; subst; admit.
+  - (* successor comes from left subtree *)
+    simpl in Hsucc. simpl in Hy.
+    destruct (n =? y) eqn:Ey.
+    + (* y is the root value: need m <= n *)
+      apply Nat.eqb_eq in Ey as Heqny. rewrite Heqny in *.
+      (* m is an element of the left subtree and all elements of the left
+         subtree are < n, so m < n *)
+         eauto. apply IHr2; try eauto; try lia; admit.
+      (* assert (m < n) by (eapply successor_from_left_lt_parent; eauto). *)
+      (* lia. *)
+    + (* y is in left or right subtree; analyze elem_of branch *)
+      destruct (y <? n) eqn:Hylt.
+      * (* y in left: apply IH on left subtree *)
+        apply IHr1; try assumption.
+        (* simpl in Hy. rewrite Ey in Hy. discriminate. *)
+      * (* y in right: then n < y and m < n -> m < y *)
+        inversion H5; subst. admit.
+Admitted. *)
 
 Lemma delete_unfold_node (x v : nat) (l r : tree) :
   delete x (node l v r) =
@@ -126,19 +193,11 @@ Lemma successor_greater_than_left :
 Proof.
   intros l v r m Hsrt Hsucc.
   inversion Hsrt; subst.
-  (* Get smaller m r from successor_all_right *)
-  assert (Hsm_m_r : smaller m r) by (eapply successor_all_right; eauto).
-  (* smaller v r gives v < all elems of r, successor_smaller gives v < m *)
-  assert (v < m) by (admit).
-  (* Use greater v l and transitivity: for any x in l, x < v < m *)
-  revert H3. (* H3 is greater v l *)
-  induction l; intros Hgl; constructor.
-  - inversion Hgl; subst; admit.
-  - inversion Hgl; subst.
-    + admit.
-    + apply IHl1; admit.
-  Admitted.
-
+  (* lift greater v l to greater m l using v < m from the successor of r *)
+  eapply greater_lift.
+  - eauto.
+  - eapply successor_min_greater_than_parent; eauto.
+Qed.
 
 (* Delete preserves 'smaller' when we delete ANY x (except root collapse case is handled by pattern) *)
 Lemma smaller_delete_any :
@@ -228,10 +287,6 @@ Lemma successor_smaller_right_after_delete :
     smaller m (delete m r).
 Proof.
   intros r m Hsort Hsucc.
-  (*
-  (* First: smaller m r from successor_all_right *)
-  apply smaller_delete_any.
-  eapply successor_all_right; eauto. *)
   revert m Hsucc.
   induction r; intros m Hsucc; simpl in *; try discriminate.
   inversion Hsort; subst.
@@ -252,7 +307,6 @@ Admitted.
     + (* m < v *) exact Hmv.
     + (* smaller m r2 via transitivity m < v and smaller v r2 *)
       eapply smaller_lift_right; eauto. *)
-
 
 Lemma delete_sorted :
   forall t x, sorted t -> sorted (delete x t).
