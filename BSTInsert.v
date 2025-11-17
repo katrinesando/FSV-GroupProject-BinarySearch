@@ -317,12 +317,12 @@ Proof.
   (* First: smaller m r from successor_all_right *)
   apply smaller_delete.
   eapply successor_all_right; eauto. *)
-  revert m Hsucc.
-  induction r; intros m Hsucc; simpl in *; try discriminate.
+  revert m Hsucc Hsort.
+  induction r; intros; simpl in *; try discriminate.
   inversion Hsort; subst.
   destruct r1.
   - (* right subtree root is the successor, delete removes it and returns r2 *)
-    inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
+     simpl. inversion Hsucc; subst. simpl. rewrite Nat.eqb_refl. assumption.
   - (* successor comes from the left subtree *)
     simpl in Hsucc. 
     assert (n > m) by (eapply greater_than_successor; eauto).
