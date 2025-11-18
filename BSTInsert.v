@@ -374,16 +374,69 @@ Proof.
         -- eapply IHt2; assumption.
 Qed.
 
+
+
+Lemma smaller_elem_false :
+  forall n t, smaller n t -> elem_of n t = false.
+Proof.
+  induction t as [| l v r IHl IHr]; simpl; intros Hsm.
+  - reflexivity.
+  - inversion Hsm; subst; clear Hsm.
+    destruct (r =? n) eqn:Heq.
+    + apply Nat.eqb_eq in Heq. lia.
+    + destruct (n <? r) eqn:Hlt.
+      * apply v. assumption.
+      * rewrite Nat.ltb_nlt in Hlt. lia.
+Qed.
+
+Lemma greater_elem_false :
+  forall n t, greater n t -> elem_of n t = false.
+Proof.
+  induction t as [| l v r IHl IHr]; simpl; intros Hgt.
+  - reflexivity.
+  - inversion Hgt; subst; clear Hgt.
+    destruct (r =? n) eqn:Heq.
+    + apply Nat.eqb_eq in Heq. lia.
+    + destruct (n <? r) eqn:Hlt.
+      * rewrite Nat.ltb_lt in Hlt; lia.
+      * apply IHr. assumption.
+Qed.
+
 Lemma delete_correct :
 forall t x,
     sorted t ->
     elem_of x t = true -> 
     (elem_of x (delete x t)) = false.
 Proof.
-  intros. 
-  induction t. simpl; intros.
-  - admit.
-  - inversion H. 
-Admitted.
+  induction t; simpl; intros x Hs He.
+  - lia.
+  - inversion Hs; subst. 
+    destruct (n =? x) eqn:Hnx.
+    + rewrite Nat.eqb_eq in Hnx; subst.
+      destruct t1.
+      * apply smaller_elem_false. assumption.
+      * destruct t2.
+        -- apply greater_elem_false. assumption.
+        -- destruct (successor (node t2_1 n0 t2_2)) eqn:Hsucc.
+          ++ simpl. 
+              assert (x < n1).
+              { eapply successor_min_greater_than_parent; eauto. }
+              assert ((n1 =? x = false)).
+              { apply Nat.eqb_neq. intros E. lia. }
+              rewrite H0. rewrite <- Nat.ltb_lt in H. rewrite H.
+              inversion H2; subst.
+              assert ((x =? n) = false).
+              { apply Nat.eqb_neq. intro E. lia. }
+              rewrite Nat.eqb_sym.
+              rewrite H1. Search (_>_).
+              assert ((x <? n) = false).
+              { apply Nat.ltb_ge. lia. }
+              rewrite H6.
+               apply greater_elem_false. assumption.
+          ++ auto.
+    + destruct (x <? n) eqn:Hnx0.
+      * simpl. rewrite Hnx. rewrite Hnx0. apply IHt1; assumption.
+      * simpl. rewrite Hnx. rewrite Hnx0. apply IHt2; assumption.
+Qed.
   
 
