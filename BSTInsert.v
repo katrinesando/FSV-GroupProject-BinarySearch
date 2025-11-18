@@ -379,27 +379,27 @@ Qed.
 Lemma smaller_elem_false :
   forall n t, smaller n t -> elem_of n t = false.
 Proof.
-  induction t as [| l v r IHl IHr]; simpl; intros Hsm.
+  induction t; simpl; intros Hsm.
   - reflexivity.
   - inversion Hsm; subst; clear Hsm.
-    destruct (r =? n) eqn:Heq.
+    destruct (n0 =? n) eqn:Heq.
     + apply Nat.eqb_eq in Heq. lia.
-    + destruct (n <? r) eqn:Hlt.
-      * apply v. assumption.
+    + destruct (n <? n0) eqn:Hlt.
+      * apply IHt1. assumption.
       * rewrite Nat.ltb_nlt in Hlt. lia.
 Qed.
 
 Lemma greater_elem_false :
   forall n t, greater n t -> elem_of n t = false.
 Proof.
-  induction t as [| l v r IHl IHr]; simpl; intros Hgt.
+  induction t; simpl; intros Hgt.
   - reflexivity.
   - inversion Hgt; subst; clear Hgt.
-    destruct (r =? n) eqn:Heq.
+    destruct (n0 =? n) eqn:Heq.
     + apply Nat.eqb_eq in Heq. lia.
-    + destruct (n <? r) eqn:Hlt.
+    + destruct (n <? n0) eqn:Hlt.
       * rewrite Nat.ltb_lt in Hlt; lia.
-      * apply IHr. assumption.
+      * apply IHt2. assumption.
 Qed.
 
 Lemma delete_correct :
@@ -434,9 +434,7 @@ Proof.
               rewrite H6.
                apply greater_elem_false. assumption.
           ++ auto.
-    + destruct (x <? n) eqn:Hnx0.
-      * simpl. rewrite Hnx. rewrite Hnx0. apply IHt1; assumption.
-      * simpl. rewrite Hnx. rewrite Hnx0. apply IHt2; assumption.
+    + destruct (x <? n) eqn:Hnx0; simpl; rewrite Hnx; rewrite Hnx0; try apply IHt1; try apply IHt2; assumption.
 Qed.
   
 
