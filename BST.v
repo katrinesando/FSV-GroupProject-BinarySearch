@@ -105,6 +105,7 @@ match t with
   else
   node (insert x l) v r
 end.
+Transparent insert.
 
 Example insert_empty : insert 42 leaf = (node leaf 42 leaf).
 Proof.
