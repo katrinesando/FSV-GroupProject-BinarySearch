@@ -57,31 +57,52 @@ Fixpoint rb_elem_of (x: nat) (t:rb_tree) : bool :=
   end.
 
 
-(* Definition balance (t: rb_tree) : rb_tree :=
+Definition balance (t: rb_tree) : rb_tree :=
 match t with
 | node c l v r =>
   match c, v, l, r with
-  | Red, v, (node Red ll lv lr), r =>
-      node Red (node Black ll lv lr) v (node Black lr v r)
-  | Red, v, (node Red ll lv (node Red lrl lrv lrr)), r =>
-      node Red (node Black ll lv lrl) lrv (node Black lrr v r)
-  | Red, v, l, (node Red (node Red rll rlv rlr) rv rr) =>
-      node Red (node Black l v rll) rlv (node Black rlr rv rr)
-  | Red, v, l, (node Red rl rv rr) =>
-      node Red (node Black l v rl) rv (node Black rl rv rr)
+  | Black, v, (node Red (node Red a x b) y c), r =>
+      node Red (node Black a x b) y (node Black c v r)
+  | Black, v, (node Red a x (node Red b y c)), r =>
+      node Red (node Black a x b) y (node Black c v r)
+  | Black, x, a, (node Red (node Red b y c) v r) =>
+      node Red (node Black a x b) y (node Black c v r)
+  | Black, x, a, (node Red b y (node Red c v r)) =>
+    node Red (node Black a x b) y (node Black c v r)
   | _, _, _, _ => t
   end
 | _ => t
-end. *)
+end.
 
-Fixpoint rb_insert (x:nat) (t:rb_tree) : rb_tree :=
+Fixpoint rb_insert_aux (x : nat) (t : rb_tree) : rb_tree :=
 match t with
 | leaf  => node Red leaf x leaf
 | node c l v r => 
   if v =? x then
   t
   else if v <? x then
-  node l v (insert x r)
+  balance (node c l v (rb_insert_aux x r))
   else
-  node (insert x l) v r
+  balance (node c (rb_insert_aux x l) v r)
 end.
+
+Definition rb_insert (x:nat) (t:rb_tree) : rb_tree :=
+match rb_insert_aux x t with
+| node _ l v r => node Black l v r
+| leaf => (*Guaranteed to not be the case*) leaf
+end.
+
+Definition tree1 :=
+  node Black 
+  (node Red leaf 5 leaf) 
+  10 
+  (node Red leaf 15 leaf).
+
+Example simple_insert : rb_insert 2 tree1 =
+  node Black 
+  (node Black (node Red leaf 2 leaf) 5 leaf) 
+  10 
+  (node Black leaf 15 leaf).
+Proof. unfold tree1. unfold rb_insert. simpl. Admitted.
+
+
