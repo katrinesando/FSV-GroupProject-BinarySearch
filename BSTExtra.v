@@ -3,6 +3,7 @@ Require Import BstProject.project_lib.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.Arith.
 Require Import Lia.
+Require Import Coq.Sorting.Sorted.
 Transparent BST.insert.
 
 (* bst to list *)
@@ -21,11 +22,64 @@ Proof. unfold bst_to_list. reflexivity. Qed.
 Example lst_bst : list_to_bst [10;5;7;2;16;17;12] =  tree1.
 Proof. unfold list_to_bst. reflexivity. Qed.
 
+Fixpoint nat_sorted (l : list nat) : bool :=
+ match l with
+  | [] => true
+  | x :: tl => 
+      match tl with
+      | [] => true
+      | y :: tl' =>
+          (x <=? y) && nat_sorted tl
+      end
+  end. 
+
+Theorem nat_sorted_correct :
+forall l,
+nat_sorted l = true ->
+Sorted le l.
+Proof.
+  induction l; intros H.
+  - auto.
+  - destruct l.
+    + constructor; auto.
+    + simpl in H. apply andb_true_iff in H. destruct H. 
+      rewrite Nat.leb_le in H. apply Sorted_cons; auto.
+Qed.
+
+Lemma bst_list_nat_sorted :
+forall t, 
+sorted t -> 
+nat_sorted (bst_to_list t) = true.
+Proof.
+ intros. induction t.
+ - auto.
+ - inversion H; subst. simpl.
+
+Lemma list_to_bst_sorted : 
+forall l, sorted (list_to_bst l).
+Proof.
+Admitted.
+
+
 (*Useful Theorems *)
-(* Theorem bst_list_sorted : list -> bst -> list - skulle give sorted list ud
-forall t1 t2, 
-bst_to_list t1 = bst_to_list t2
-*)
+Theorem bst_list_sorted : (*list -> bst -> list - skulle give sorted list ud*)
+forall l1 l2 t, 
+list_to_bst l1 = t ->
+sorted t ->
+bst_to_list t = l2 ->
+nat_sorted l2 = true.
+Proof.
+  intros.
+  subst. apply bst_list_nat_sorted. apply list_to_bst_sorted.
+Qed.
+  
+  induction l2 .
+  - auto.
+  - inversion H0; subst. 
+  
+  rewrite <- H0. rewrite <- H. induction l1.
+    + auto.
+    +  rewrite H. rewrite H0.  
 
 (* Size of list equals size of tree *)
 
