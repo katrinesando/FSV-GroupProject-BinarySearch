@@ -3,6 +3,7 @@ Require Import BstProject.project_lib.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.Arith.
 Require Import Lia.
+Require Import Coq.Sorting.Sorted.
 Transparent BST.insert.
 
 (* bst to list *)
@@ -13,12 +14,15 @@ Fixpoint bst_to_list (bst: tree) : list nat :=
 end.
 
 Definition list_to_bst (lst: list nat) : tree :=
-  fold_left(fun acc elem => insert elem acc) lst leaf.
+  fold_right(fun elem acc => insert elem acc) leaf lst.
 
 Example bst_lst : bst_to_list tree1 = [2;5;7;10;12;16;17].
 Proof. unfold bst_to_list. reflexivity. Qed.
 
-Example lst_bst : list_to_bst [10;5;7;2;16;17;12] =  tree1.
+
+
+(* [10;5;7;2;16;17;12] *)
+Example lst_bst : list_to_bst [12; 17; 16; 2; 7; 5; 10 ] =  tree1.
 Proof. unfold list_to_bst. reflexivity. Qed.
 
 (*Useful Theorems *)
@@ -26,6 +30,30 @@ Proof. unfold list_to_bst. reflexivity. Qed.
 forall t1 t2, 
 bst_to_list t1 = bst_to_list t2
 *)
+
+Lemma bst_to_list_insert_sorted :
+  forall x t,
+    Sorted le (bst_to_list t) ->
+    Sorted le (bst_to_list (insert x t)).
+Proof.
+intros.
+induction H.
+- (* Sorted nil *) admit.
+  Search(Sorted).
+- assumption.
+Admitted.
+
+
+Theorem bst_to_list_list_to_bst_sorted :
+  forall xs : list nat,
+    Sorted le (bst_to_list (list_to_bst xs)).
+Proof.
+ induction xs as [|h t IH].
+  - simpl. constructor.
+  - simpl. apply bst_to_list_insert_sorted. assumption.
+Admitted.
+
+
 
 (* Size of list equals size of tree *)
 
