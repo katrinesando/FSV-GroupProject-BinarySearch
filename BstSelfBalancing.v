@@ -117,8 +117,6 @@ Example complex_insert : rb_insert 7 tree_complex =
     (node Black (node Red leaf 7 leaf) 8 (node Red leaf 9 leaf))).
 Proof. unfold tree1. unfold rb_insert. simpl. reflexivity. Qed.
 
-  
-
 (* Prove rb insert is correct *)
 Inductive no_red_red : rb_tree -> Prop :=
 | nr_leaf : no_red_red leaf
@@ -176,6 +174,53 @@ Lemma rb_insert_aux_preserves_invariant :
     exists k, black_height (rb_insert_aux x t) = Some k.
 Admitted.
 
+(* recolor helper lemmas *)
+Lemma recolor_preserves_rb_sorted :
+  forall c l v r,
+    rb_sorted (node c l v r) ->
+    rb_sorted (node Black l v r).
+Proof.
+  intros * H. inversion H; subst. constructor; assumption.
+Qed.
+
+Lemma recolor_preserves_no_red_red :
+  forall c l v r,
+    no_red_red (node c l v r) ->
+    no_red_red (node Black l v r).
+Proof.
+  intros c l v r H.
+  inversion H; subst; clear H.
+  - (* originally leaf impossible for node *)
+    eauto. admit.
+  - (* originally black *)
+    constructor; assumption.
+Admitted.
+
+Lemma black_height_recolor_root :
+  forall c l v r k,
+    black_height (node c l v r) = Some k ->
+    match c with
+    | Black => black_height (node Black l v r) = Some k
+    | Red => black_height (node Black l v r) = Some (k + 1)
+    end.
+Proof.
+  intros c l v r k H.
+  simpl in H.
+  destruct (black_height l) eqn:Hl; destruct (black_height r) eqn:Hr; try discriminate.
+  destruct (Nat.eqb n n0) eqn:Heq; try discriminate.
+  apply Nat.eqb_eq in Heq. subst. admit.
+Admitted.
+  (* destruct c; simpl in *; now rewrite Hl, Hr. *)
+
+Lemma rb_insert_aux_never_leaf : forall x t, rb_insert_aux x t <> leaf.
+Proof.
+  intros x t. destruct t.
+  - simpl. discriminate.
+  - simpl. destruct (n =? x); [discriminate|].
+    destruct (n <? x); simpl; admit.
+    (* + unfold balance; destruct c; destruct l; destruct r; simpl; discriminate.
+    + unfold balance; destruct c; destruct l; destruct r; simpl; discriminate. *)
+Admitted.
 (* Final theorem: recoloring root to Black preserves invariants and gives rb_invariant *)
 Theorem rb_insert_correct : forall x t,
   rb_invariant t ->
@@ -184,20 +229,33 @@ Proof.
   intros x t [Hsorted [Hnored [k Hbh]]].
   unfold rb_insert.
   pose proof (rb_insert_aux_preserves_invariant x t) as Haux.
-  specialize (Haux (conj Hsorted (conj Hnored Hbh))). (* or apply as needed *)
   remember (rb_insert_aux x t) as t'.
   destruct t' as [ | c l v r ] eqn:E.
-  -
-  
-  (* node c l v r: recolor to Black *)
-    (* use lemmas to show sorting/no-red-red/black-height preserved, and recoloring root to Black keeps bh same *)
-    intros.
-    admit.
-  - (* leaf impossible by construction *)
-    simpl in E. discriminate E. simpl. admit.
+  - (* impossible by lemma *)
+    exfalso. apply (rb_insert_aux_never_leaf x t). symmetry. assumption.
+  -  
+    destruct Haux as [Hsorted' [Hnored' Hbh']].
+    constructor.
+    +  (* sortedness preserved *)
+      eauto.
+    + split.
+      *  (* no-red-red preserved *)
+        eauto.
+      *  (* black-height preserved *)
+        exists k. assumption.
+    + (* recolor to Black preserves invariants *)
+      pose proof (recolor_preserves_rb_sorted c l v r Hsorted') as Hsorted_black.
+      pose proof (recolor_preserves_no_red_red c l v r Hnored') as Hnored_black.
+      destruct Hbh' as [k' Hbh'].
+      destruct c.
+    * specialize (black_height_recolor_root Black l v r k' Hbh') as Hbh_recolored.
+      simpl in Hbh_recolored.
+      split; [ exact Hsorted_black | ].
+      split; [ exact Hnored_black | ].
+      exists k'. exact Hbh_recolored.
+    * specialize (black_height_recolor_root Red l v r k' Hbh') as Hbh_recolored.
+      simpl in Hbh_recolored.
+      split; [ exact Hsorted_black | ].
+      split; [ exact Hnored_black | ].
+      exists (k' + 1). exact Hbh_recolored.
 Qed.
-
-(* Theorm rb_insert_correct : forall x t,
-  rb_sorted t ->
-  rb_sorted (rb_insert x t).
-Proof. *)
