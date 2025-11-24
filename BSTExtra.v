@@ -4,6 +4,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.Arith.
 Require Import Lia.
 Require Import Coq.Sorting.Sorted.
+Require Import Coq.Sorting.Permutation.
 Transparent BST.insert.
 
 (* bst to list *)
@@ -21,18 +22,22 @@ Proof. unfold bst_to_list. reflexivity. Qed.
 
 Example lst_bst : list_to_bst [10;5;7;2;16;17;12] =  tree1.
 Proof. unfold list_to_bst. reflexivity. Qed.
-
-Fixpoint nat_sorted (l : list nat) : bool :=
- match l with
-  | [] => true
-  | x :: tl => 
-      match tl with
-      | [] => true
-      | y :: tl' =>
-          (x <=? y) && nat_sorted tl
-      end
-  end. 
-
+ 
+  
+Theorem list_to_bst_sorted :
+  forall l, sorted (list_to_bst l).
+Proof.
+  unfold list_to_bst.
+  assert (H: forall l t, sorted t -> sorted (fold_left (fun acc elem => insert elem acc) l t)).
+  { induction l as [| a tl IH]; simpl; intros.
+    - assumption.
+    - (* fold_left (a::tl) t = fold_left tl (insert a t) *)
+      apply IH.
+      apply insert_sorted. assumption.
+  }
+  auto.
+Qed.
+(*
 Theorem nat_sorted_correct :
 forall l,
 nat_sorted l = true ->
@@ -80,7 +85,7 @@ Qed.
   rewrite <- H0. rewrite <- H. induction l1.
     + auto.
     +  rewrite H. rewrite H0.  
-
+*)
 (* Size of list equals size of tree *)
 
 (* Exercise 3.10*)
