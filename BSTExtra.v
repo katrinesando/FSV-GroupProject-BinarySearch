@@ -11,82 +11,131 @@ Transparent BST.insert.
 Fixpoint bst_to_list (bst: tree) : list nat :=
   match bst with
   | leaf => []
-  | node l v r => bst_to_list l ++ [v] ++ bst_to_list r
+  | node l v r => [v] ++ bst_to_list l ++ bst_to_list r
 end.
 
-Definition list_to_bst (lst: list nat) : tree :=
-  fold_left(fun acc elem => insert elem acc) lst leaf.
+(* Definition list_to_bst (lst: list nat) : tree :=
+  fold_left(fun acc elem => insert elem acc) lst leaf. *)
 
-Example bst_lst : bst_to_list tree1 = [2;5;7;10;12;16;17].
-Proof. unfold bst_to_list. reflexivity. Qed.
+Fixpoint list_to_bst (l : list nat) : tree :=
+  match l with
+  | [] => leaf
+  | x :: xs => insert x (list_to_bst xs)
+  end.
 
-Example lst_bst : list_to_bst [10;5;7;2;16;17;12] =  tree1.
-Proof. unfold list_to_bst. reflexivity. Qed.
- 
-  
-Theorem list_to_bst_sorted :
-  forall l, sorted (list_to_bst l).
+Example bst_lst : bst_to_list tree1 = [10;5;2;7;16;12;17]. (*[2;5;7;10;12;16;17].*)
+Proof. unfold bst_to_list. simpl. reflexivity. Qed.
+
+Example lst_bst : list_to_bst [12;17;16;2;7;5;10] =  tree1. (* [10;5;7;2;16;17;12] *)
+Proof. unfold list_to_bst. unfold tree1. simpl. reflexivity. Qed.
+
+Lemma smaller_list : forall n t x, 
+  smaller n t -> In x (bst_to_list t) -> n < x.
 Proof.
-  unfold list_to_bst.
-  assert (H: forall l t, sorted t -> sorted (fold_left (fun acc elem => insert elem acc) l t)).
-  { induction l as [| a tl IH]; simpl; intros.
-    - assumption.
-    - (* fold_left (a::tl) t = fold_left tl (insert a t) *)
-      apply IH.
-      apply insert_sorted. assumption.
-  }
-  auto.
-Qed.
-(*
-Theorem nat_sorted_correct :
-forall l,
-nat_sorted l = true ->
-Sorted le l.
-Proof.
-  induction l; intros H.
-  - auto.
-  - destruct l.
-    + constructor; auto.
-    + simpl in H. apply andb_true_iff in H. destruct H. 
-      rewrite Nat.leb_le in H. apply Sorted_cons; auto.
+  induction t; simpl; intros.
+  - inversion H0.
+  - inversion H; subst.
+    destruct H0.
+    + subst. assumption.
+    + apply in_app_or in H0. destruct H0 as [H_left | H_right].
+      * apply IHt1; assumption.
+      * apply IHt2; assumption.
 Qed.
 
-Lemma bst_list_nat_sorted :
-forall t, 
-sorted t -> 
-nat_sorted (bst_to_list t) = true.
+
+Lemma greater_list : forall n t x, 
+  greater n t -> In x (bst_to_list t) -> x < n.
 Proof.
- intros. induction t.
- - auto.
- - inversion H; subst. simpl.
+  induction t; simpl; intros.
+  - inversion H0.
+  - inversion H; subst.
+    destruct H0.
+    + subst. assumption.
+    + apply in_app_or in H0. destruct H0 as [H_left | H_right].
+      * apply IHt1; assumption.
+      * apply IHt2; assumption.
+Qed.
 
-Lemma list_to_bst_sorted : 
-forall l, sorted (list_to_bst l).
+Lemma bst_to_list_correct : forall t n,
+  sorted t ->
+  elem_of n t = true <-> In n (bst_to_list t).
 Proof.
-Admitted.
+  induction t; simpl. intros n H_sort.
+  - split; intros; inversion H.
+  - intros n0 H_sort. inversion H_sort; subst.
+    destruct (n=?n0) eqn:Heq.
+    + rewrite Nat.eqb_eq in Heq. split.
+      * intros; left; assumption.
+      * intros. reflexivity.
+    + destruct (n0 <? n) eqn:Hlt.
+      * rewrite IHt1; try assumption.
+        split; intros H.
+        -- right. apply in_or_app. left. assumption.
+        -- destruct H as [Heq' | H].
+          --- subst. rewrite Nat.eqb_refl in Heq. inversion Heq.
+          --- apply in_app_or in H. destruct H as [H_left | H_right].
+            ---- assumption.
+            ---- eapply smaller_list in H_right; [| exact H3]. rewrite Nat.ltb_lt in Hlt. lia.          
+            
+      * rewrite IHt2; try assumption.
+        split; intros H.
+        -- right. apply in_or_app. right. assumption.
+        -- destruct H as [Heq' | H].
+          --- subst. rewrite Nat.eqb_refl in Heq. inversion Heq.
+          --- apply in_app_or in H. destruct H as [H_left | H_right].
+            ---- eapply greater_list in H_left; [| exact H2]. rewrite Nat.ltb_ge in Hlt. lia.
+            ---- assumption.
+Qed.
+
+Lemma list_to_bst_sorted : forall l, sorted (list_to_bst l).
+Proof.
+  induction l; simpl.
+  - constructor. (* leaf is sorted *)
+  - apply insert_sorted. assumption.
+Qed.
+
+Lemma list_to_bst_correct : forall l x,
+  elem_of x (list_to_bst l) = true <-> In x l.
+Proof.
+  induction l; intros.
+  - simpl. split; intros; inversion H.
+  - simpl. rewrite insert_correct; try apply list_to_bst_sorted.
+    rewrite orb_true_iff. rewrite IHl.
+    rewrite Nat.eqb_eq. 
+    split; intros; rewrite or_comm; assumption.
+Qed.
 
 
-(*Useful Theorems *)
-Theorem bst_list_sorted : (*list -> bst -> list - skulle give sorted list ud*)
-forall l1 l2 t, 
-list_to_bst l1 = t ->
-sorted t ->
-bst_to_list t = l2 ->
-nat_sorted l2 = true.
+Definition same_elements (t1 t2 : tree) : Prop :=
+  forall x, elem_of x t1 = elem_of x t2.
+
+Theorem bst_list_bst_same :
+  forall t t' l n,
+  sorted t ->
+  bst_to_list t = l ->
+  list_to_bst l = t' ->
+  elem_of n t = elem_of n t'.
 Proof.
   intros.
-  subst. apply bst_list_nat_sorted. apply list_to_bst_sorted.
-Qed.
+  subst.
+  destruct (elem_of n t) eqn:H_n_in_t;
+  destruct (elem_of n (list_to_bst (bst_to_list t))) eqn:H_n_in_new.
+  - reflexivity.
+  - apply bst_to_list_correct in H_n_in_t; try assumption.
+    rewrite <- list_to_bst_correct in H_n_in_t.
+    rewrite <- H_n_in_t; rewrite <- H_n_in_new. reflexivity.
+  - apply list_to_bst_correct in H_n_in_new.
+    rewrite <- bst_to_list_correct in H_n_in_new; try assumption.
+    rewrite <- H_n_in_t; rewrite <- H_n_in_new. reflexivity.
+  - reflexivity.
+Qed. 
   
-  induction l2 .
-  - auto.
-  - inversion H0; subst. 
-  
-  rewrite <- H0. rewrite <- H. induction l1.
-    + auto.
-    +  rewrite H. rewrite H0.  
-*)
-(* Size of list equals size of tree *)
+
+(*bst->list_bst samme træ*)
+(*bst->lst samme elem*)
+(*lav funktion der fjerner duplicates eller check at hver ting i list er forskellig
+
+Mere vigtig at vise vores forståelse og argumentere for at vores implementation er rigtig.*)
 
 (* Exercise 3.10*)
 (* Find smallest value in right subtree -> expects to get right subtree *)
