@@ -29,6 +29,13 @@ Proof. unfold bst_to_list. simpl. reflexivity. Qed.
 Example lst_bst : list_to_bst [12;17;16;2;7;5;10] =  tree1. (* [10;5;7;2;16;17;12] *)
 Proof. unfold list_to_bst. unfold tree1. simpl. reflexivity. Qed.
 
+
+Ltac solve_by_IH :=
+  match goal with
+  | [ H : _ |- _ ] => solve [ apply H; assumption ]
+  end.
+
+
 Lemma smaller_list : forall n t x, 
   smaller n t -> In x (bst_to_list t) -> n < x.
 Proof.
@@ -37,11 +44,8 @@ Proof.
   - inversion H; subst.
     destruct H0.
     + subst. assumption.
-    + apply in_app_or in H0. destruct H0 as [H_left | H_right].
-      * apply IHt1; assumption.
-      * apply IHt2; assumption.
+    + apply in_app_or in H0. destruct H0 as [H_left | H_right]; solve_by_IH.
 Qed.
-
 
 Lemma greater_list : forall n t x, 
   greater n t -> In x (bst_to_list t) -> x < n.
@@ -51,9 +55,7 @@ Proof.
   - inversion H; subst.
     destruct H0.
     + subst. assumption.
-    + apply in_app_or in H0. destruct H0 as [H_left | H_right].
-      * apply IHt1; assumption.
-      * apply IHt2; assumption.
+    + apply in_app_or in H0. destruct H0 as [H_left | H_right]; solve_by_IH.
 Qed.
 
 Lemma bst_to_list_correct : forall t n,
@@ -117,24 +119,15 @@ Proof.
   intros.
   subst.
   destruct (elem_of n t) eqn:H_n_in_t;
-  destruct (elem_of n (list_to_bst (bst_to_list t))) eqn:H_n_in_new.
-  - reflexivity.
+  destruct (elem_of n (list_to_bst (bst_to_list t))) eqn:H_n_in_new; try reflexivity.
   - apply bst_to_list_correct in H_n_in_t; try assumption.
     rewrite <- list_to_bst_correct in H_n_in_t.
     rewrite <- H_n_in_t; rewrite <- H_n_in_new. reflexivity.
   - apply list_to_bst_correct in H_n_in_new.
     rewrite <- bst_to_list_correct in H_n_in_new; try assumption.
     rewrite <- H_n_in_t; rewrite <- H_n_in_new. reflexivity.
-  - reflexivity.
 Qed. 
   
-
-(*bst->list_bst samme træ*)
-(*bst->lst samme elem*)
-(*lav funktion der fjerner duplicates eller check at hver ting i list er forskellig
-
-Mere vigtig at vise vores forståelse og argumentere for at vores implementation er rigtig.*)
-
 (* Exercise 3.10*)
 (* Find smallest value in right subtree -> expects to get right subtree *)
 Fixpoint successor (t:tree) : option nat :=
@@ -149,14 +142,13 @@ Fixpoint delete (x : nat) (t : tree) : tree :=
   | leaf => leaf
   | node l v r =>
     if v =? x then
-      (*delete happens here*)
       match l,r with
       | leaf, _ => r
       | _, leaf => l
       | _,_ => 
         match successor r with
         | Some v' => node l v' (delete v' r)
-        | None => leaf (*Impossible -> TODO: make option (None)*)
+        | None => leaf (* Impossible *)
         end
       end
     else if x <? v then
@@ -183,6 +175,20 @@ Example delete_root : delete 10 tree1 =
   (node leaf 16 (node leaf 17 leaf)).
 Proof. unfold delete. reflexivity. Qed.
 
+
+Ltac solve_lift :=
+  simpl; intros;
+  try constructor;
+  match goal with
+  | [ H : greater _ (node _ _ _) |- _ ] => inversion H; subst
+  | [ H : smaller _ (node _ _ _) |- _ ] => inversion H; subst
+  end;
+  try constructor; 
+  try lia; 
+  match goal with
+  | [ IH : forall _, _ -> _ |- _ ] => apply IH; assumption
+  end.
+
 (* Lemmas to help prove sorted*)
 (* If a value is greater than all elements of a tree, and we increase the
    value, it stays greater than all elements. *)
@@ -192,15 +198,9 @@ Lemma greater_lift :
     v < m ->
     greater m t.
 Proof.
-  induction t; simpl; intros Hg Hlt.
-  - constructor.
-  - inversion Hg; subst.
-    constructor.
-    + lia.
-    + apply IHt1; assumption.
-    + apply IHt2; assumption.
+  induction t;
+  solve_lift.
 Qed.
-
 
 Lemma smaller_lift_right :
   forall m v t,
@@ -208,13 +208,8 @@ Lemma smaller_lift_right :
     smaller v t ->
     smaller m t.
 Proof.
-  induction t; intros Hlt Hsm; simpl.
-  - constructor.
-  - inversion Hsm; subst.
-    constructor.
-    + lia.
-    + apply IHt1; assumption.
-    + apply IHt2; assumption.
+  induction t; 
+  solve_lift.
 Qed.
 
 (* If the parent ensures all elements of r are > v (smaller v r), then the
@@ -249,6 +244,11 @@ Proof.
   - eapply IHl1; eauto.
 Qed.
 
+Hint Resolve successor_min_greater_than_parent : core.
+Hint Resolve greater_lift : core.
+Hint Resolve smaller_lift_right : core.
+Hint Resolve successor_from_left_lt_parent : core.
+
 (* Minimum value property in right subtree *)
 (* The successor is a minimal element of the tree: every element of the tree
    is >= the successor. We state this using [elem_of] for membership. This is
@@ -281,9 +281,7 @@ Proof.
   intros l v r m Hsrt Hsucc.
   inversion Hsrt; subst.
   (* lift greater v l to greater m l using v < m from the successor of r *)
-  eapply greater_lift.
-  - eauto.
-  - eapply successor_min_greater_than_parent; eauto.
+  eauto.
 Qed.
 
 (* Helper: if n > all elements of t, then n > successor of t *)
@@ -295,11 +293,7 @@ Lemma greater_than_successor :
 Proof.
   induction t; intros m Hgt Hsucc; simpl in *; try discriminate.
   inversion Hgt; subst.
-  destruct t1.
-  - (* successor is the root *)
-    injection Hsucc as <-. assumption.
-  - (* successor in left subtree *)
-    eapply IHt1; eauto.
+  eauto.
 Qed.
 
 Lemma smaller_than_successor :
@@ -310,12 +304,12 @@ Lemma smaller_than_successor :
 Proof.
   induction t; intros m Hgt Hsucc; simpl in *; try discriminate.
   inversion Hgt; subst.
-  destruct t1.
-  - (* successor is the root *)
-    injection Hsucc as <-. assumption.
-  - (* successor in left subtree *)
-    eapply IHt1; eauto.
+  eauto.
 Qed.
+
+Hint Resolve successor_greater_than_left : core.
+Hint Resolve greater_than_successor : core.
+Hint Resolve smaller_than_successor : core.
 
 (* Delete preserves 'smaller' when we delete ANY x (except root collapse case is handled by pattern) *)
 Lemma smaller_delete :
@@ -334,34 +328,18 @@ Proof.
       destruct (successor (node t2_1 n2 t2_2)) eqn:Hsucc.
       * (* successor found: n3 *)
         destruct t2_1; simpl in *.
-        -- (* t2_1 = leaf, so successor is n2 *)
-           injection Hsucc as <-. simpl.
-           constructor.
-           ++ (* n > n2 *)
-              eapply smaller_than_successor; eauto.
-           ++ (* greater n left *)
-              assumption.
-           ++ (* greater n t2_2 *)
-              inversion H6; subst. 
-              rewrite (Nat.eqb_refl n2). eauto.
+        -- eauto. (* t2_1 = leaf, so successor is n2 *)
         -- (* t2_1 = node, successor from left subtree *)
-            simpl in Hsucc. rewrite Hsucc. constructor. 
-           ++ (* n > n3 *)
-              eapply smaller_than_successor; eauto.
-           ++ (* greater n left *)
-              assumption.
-           ++ (* greater n (delete n3 right) *)
-           eapply IHt2. eauto.
-      * (* no successor: impossible *)
+            simpl in Hsucc. rewrite Hsucc. eauto.
+      *  (* no successor: impossible *)
         destruct t2_1; simpl; simpl in *. 
         ++ discriminate Hsucc.
         ++ destruct t2_1_1.
           --- inversion Hsucc; subst.
           --- simpl in *. rewrite Hsucc. eauto.
     + (* not deleting root *)
-      destruct (x <? n0) eqn:Hlt.
-      * constructor; try assumption; apply IHt1; assumption.
-      * constructor; try assumption; apply IHt2; assumption.
+      destruct (x <? n0) eqn:Hlt; eauto.
+      
 Qed.
 
 Lemma greater_delete :
@@ -382,24 +360,9 @@ Proof.
       destruct (successor (node t2_1 n2 t2_2)) eqn:Hsucc.
       * (* successor found: n3 *)
         destruct t2_1; simpl in *.
-        -- (* t2_1 = leaf, so successor is n2 *)
-           injection Hsucc as <-. simpl.
-           constructor.
-           ++ (* n > n2 *)
-              eapply greater_than_successor; eauto.
-           ++ (* greater n left *)
-              assumption.
-           ++ (* greater n t2_2 *)
-              inversion H6; subst. 
-              rewrite (Nat.eqb_refl n2). eauto.
-        -- (* t2_1 = node, successor from left subtree *)
-            simpl in Hsucc. rewrite Hsucc. constructor. 
-           ++ (* n > n3 *)
-              eapply greater_than_successor; eauto.
-           ++ (* greater n left *)
-              assumption.
-           ++ (* greater n (delete n3 right) *)
-           eapply IHt2. eauto.
+        -- eauto.
+        --(* t2_1 = node, successor from left subtree *)
+            simpl in Hsucc; rewrite Hsucc; eauto.
       * (* no successor: impossible *)
         destruct t2_1; simpl; simpl in *. 
         ++ discriminate Hsucc.
@@ -407,9 +370,7 @@ Proof.
           --- inversion Hsucc; subst.
           --- simpl in *. rewrite Hsucc. eauto.
     + (* not deleting root *)
-      destruct (x <? n0) eqn:Hlt.
-      * constructor; try assumption; apply IHt1; assumption.
-      * constructor; try assumption; apply IHt2; assumption.
+      destruct (x <? n0) eqn:Hlt; eauto.
 Qed.
 
 Lemma successor_smaller_right_after_delete :
@@ -419,10 +380,7 @@ Lemma successor_smaller_right_after_delete :
     smaller m (delete m r).
 Proof.
   intros r m Hsort Hsucc.
-  (*
   (* First: smaller m r from successor_all_right *)
-  apply smaller_delete.
-  eapply successor_all_right; eauto. *)
   revert m Hsucc Hsort.
   induction r; intros; simpl in *; try discriminate.
   inversion Hsort; subst.
@@ -436,10 +394,12 @@ Proof.
     destruct (n =? m) eqn:Heq.
     +  apply Nat.eqb_eq in Heq; subst. lia.
     +  assert (m <? n = true) as Hlt by (apply Nat.ltb_lt; lia).
-      rewrite Hlt; simpl.
-      constructor; try eauto.
-      * eapply smaller_lift_right; try eauto.
+      rewrite Hlt; eauto.
 Qed.
+
+Hint Resolve smaller_delete : core.
+Hint Resolve greater_delete : core.
+Hint Resolve successor_smaller_right_after_delete : core.
 
 Lemma delete_sorted :
   forall t x, sorted t -> sorted (delete x t).
@@ -454,30 +414,9 @@ Proof.
       * destruct t2.
         -- (* one-child left *) assumption.
         -- (* two children *)
-           destruct (successor (node t2_1 n1 t2_2)) eqn:Hsucc.
-           ++ (* successor found *)
-              simpl.
-              constructor.
-              ** (* greater n0 t1 *)
-                 eapply successor_greater_than_left; eauto.
-              ** (* smaller n0 (delete n0 right) *) 
-              rewrite Nat.eqb_eq in Heq; subst. 
-              rewrite <- (delete_unfold_node n2 n1 t2_1 t2_2).
-              eapply successor_smaller_right_after_delete; eauto.
-              ** (* sorted left *) assumption.
-              ** (* sorted right after delete *) eapply IHt2; assumption.
-           ++ (* No successor: impossible since right has at least root *)
-              simpl in Hsucc; eauto.
+           destruct (successor (node t2_1 n1 t2_2)) eqn:Hsucc; eauto.
     + (* not deleting root *)
-      destruct (x <? n) eqn:Hlt.
-      * (* delete in left *)
-        constructor; try assumption.
-        -- eapply greater_delete; eauto.
-        -- eapply IHt1; assumption.
-      * (* delete in right *)
-        constructor; try assumption.
-        -- eapply smaller_delete; eauto.
-        -- eapply IHt2; assumption.
+      destruct (x <? n) eqn:Hlt; eauto.
 Qed.
 
 
@@ -508,6 +447,10 @@ Proof.
       * apply IHt2. assumption.
 Qed.
 
+Hint Resolve smaller_elem_false : core.
+Hint Resolve greater_elem_false : core.
+
+
 Lemma delete_correct :
 forall t x,
     sorted t ->
@@ -522,7 +465,7 @@ Proof.
       destruct t1.
       * apply smaller_elem_false. assumption.
       * destruct t2.
-        -- apply greater_elem_false. assumption.
+        -- eauto. (*  apply greater_elem_false. assumption. *)
         -- destruct (successor (node t2_1 n0 t2_2)) eqn:Hsucc.
           ++ simpl. 
               assert (x < n1).
@@ -534,13 +477,13 @@ Proof.
               assert ((x =? n) = false).
               { apply Nat.eqb_neq. intro E. lia. }
               rewrite Nat.eqb_sym.
-              rewrite H1. Search (_>_).
+              rewrite H1.
               assert ((x <? n) = false).
               { apply Nat.ltb_ge. lia. }
               rewrite H6.
-               apply greater_elem_false. assumption.
+              apply greater_elem_false. assumption.
           ++ auto.
     + destruct (x <? n) eqn:Hnx0; simpl; rewrite Hnx; rewrite Hnx0; try apply IHt1; try apply IHt2; assumption.
 Qed.
-  
 
+(* 580 -> 500*)
