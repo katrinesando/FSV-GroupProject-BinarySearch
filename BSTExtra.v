@@ -61,14 +61,12 @@ Lemma bst_to_list_correct : forall t n,
   elem_of n t = true <-> In n (bst_to_list t).
 Proof.
   induction t; simpl. intros n H_sort.
-  - split; intros; inversion H.
-  - intros n0 H_sort. inversion H_sort; subst.
+  - (* Leaf *) intuition. 
+  - (* Node *) intros n0 H_sort. inversion H_sort; subst.
     destruct (n=?n0) eqn:Heq.
-    + rewrite Nat.eqb_eq in Heq. split.
-      * intros; left; assumption.
-      * intros. reflexivity.
-    + destruct (n0 <? n) eqn:Hlt.
-      * rewrite IHt1; try assumption.
+    + (* Equal *) rewrite Nat.eqb_eq in Heq; intuition. 
+    + (*Inequality*) destruct (n0 <? n) eqn:Hlt.
+      * (* Right subtree *) rewrite IHt1; try assumption.
         split; intros H.
         -- right. apply in_or_app. left. assumption.
         -- destruct H as [Heq' | H].
@@ -77,7 +75,7 @@ Proof.
             ---- assumption.
             ---- eapply smaller_list in H_right; [| exact H3]. rewrite Nat.ltb_lt in Hlt. lia.          
             
-      * rewrite IHt2; try assumption.
+      * (* Left subtree *) rewrite IHt2; try assumption.
         split; intros H.
         -- right. apply in_or_app. right. assumption.
         -- destruct H as [Heq' | H].
