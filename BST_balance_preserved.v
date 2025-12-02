@@ -761,84 +761,102 @@ Proof.
 Qed.
 
 
-Ltac solve_bh_from_hyp :=
-  match goal with
-  | [ H : _ |- _ ] =>
-    let Ht := fresh "Hbh" in
-    (* Work on a local copy so we can clear it after inversion *)
-    pose proof H as Ht;
-    simpl in Ht;
-    (* remember and destruct any nested black_height calls *)
-    repeat match type of Ht with
-    | context[black_height ?t] =>
-        let He := fresh "He" in
-        remember (black_height t) as He eqn:He;
-        destruct (black_height t) eqn:He; [ clear He | discriminate Ht ]
-    end;
-    (* destruct Nat.eqb occurrences, turning true branches into equalities *)
-    repeat match type of Ht with
-    | context[Nat.eqb ?a ?b] =>
-        let E := fresh "E" in
-        destruct (Nat.eqb a b) eqn:E;
-        [ apply Nat.eqb_eq in E; subst a | discriminate Ht ]
-    end;
-    (* now Ht must be of shape Some _ = Some _; invert it to get numeric equalities *)
-    inversion Ht; clear Ht; try subst
+Ltac bh_prepare H :=
+  lazymatch type of H with
+  | black_height (node Black ?l ?v ?r) = Some ?k =>
+      let Heq := fresh "Hbh" in
+      pose proof H as Heq; simpl in Heq;
+      remember (black_height l) as Hbl eqn:Hl;
+      remember (black_height r) as Hbr eqn:Hr;
+      destruct Hbl as [hl|] eqn:Ehl; [ | discriminate Heq ];
+      destruct Hbr as [hr|] eqn:Ehr; [ | discriminate Heq ];
+      destruct (Nat.eqb hl hr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst hr | discriminate Heq ];
+      injection Heq as Hk; clear Heq; subst k
+  | _ => fail "bh_prepare: hypothesis must have form black_height (node Black l v r) = Some k"
   end.
 
-(* usage: `solve_bh_from_hyp.` after you have `H1` (or whichever hyp) in context,
-   then `simpl; reflexivity.` to close the goal. *)
+Ltac bh_solve H :=
+  lazymatch type of H with
+  | black_height (node Black ?l ?v ?r) = Some ?k =>
+      let Heq := fresh "Hbh" in
+      pose proof H as Heq; simpl in Heq;
+      remember (black_height l) as Hbl eqn:Hl;
+      remember (black_height r) as Hbr eqn:Hr;
+      destruct Hbl as [hl|] eqn:Ehl; [ | discriminate Heq ];
+      destruct Hbr as [hr|] eqn:Ehr; [ | discriminate Heq ];
+      destruct (Nat.eqb hl hr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst hr | discriminate Heq ];
+      injection Heq; intros; clear Heq;
+      (* simplify the goal using the recorded Hl/Hr and finish if possible *)
+      repeat (rewrite Hl || rewrite Hr); simpl; try reflexivity
+  | _ => fail "bh_solve: hypothesis must have form black_height (node Black l v r) = Some k"
+  end.
 
 Lemma balance_preserves_bh :
   forall t k, black_height t = Some k -> black_height (balance t) = Some k.
 Proof.
-Admitted.
-  (* intros [|c l v r] k H; simpl. 
+  intros [|c l v r] k H; simpl. 
   - assumption.
-  - destruct c. *)
-    (* + remember (black_height l) as Hbl eqn:Hl.
-      remember (black_height r) as Hbr eqn:Hr.
-      destruct Hbl as [hl|] eqn:Ehl; try discriminate;
-      destruct Hbr as [hr|] eqn:Ehr; try discriminate;
-      try(destruct (Nat.eqb hl hr) eqn:Heq; try discriminate);
-      try(apply Nat.eqb_eq in Heq; subst hr);
-      injection H as Hk; clear H.
-      subst k.
-
-      destruct l as [| lc ll lv_l lr]; destruct r as [| rc rl rv_r rr]; simpl;
-      try(destruct lc); eauto; simpl in H1.
-      * destruct rc; eauto.
-        destruct rl; try (destruct rr); eauto;
-        destruct c; eauto;
-        try(destruct c0); 
-        pose proof H1 as Htmp; solve_bh_from_hyp; eauto.
-        -- remember (black_height (node Red rr1 n rr2)) as hh eqn:Ehh.
-            destruct hh as [h|] eqn:Ehh'; [ | discriminate Htmp ].
-            simpl in Htmp.
-            destruct (0 =? h) eqn:E0h.
-            ++ apply Nat.eqb_eq in E0h; subst h.
-               inversion Htmp; clear Htmp; subst k.
-               eauto. simpl; try reflexivity. admit.
-            ++ discriminate Htmp.
-        
-        
-        inv H1. inv H4; inv H6; inv H5; eauto.
-      * destruct ll; try(destruct lr); try(simpl; assumption);
-        destruct c; try(simpl; assumption);
-        try(destruct c0); inv H2; inv H4; inv H6; inv H5; eauto.
-        repeat(inversion H7); eauto.
-      * destruct rc; try(destruct rl); try(destruct rr); try(simpl; assumption);
-        destruct c; try(destruct c0); inv H2; inv H4; inv H6; inv H5; eauto;
-        repeat(inversion H7); eauto; inversion H8; eauto.
-      * destruct ll; try(destruct lr); try(destruct rc); 
-        try(destruct rl); try(destruct rr); 
-        try(simpl; assumption);
-        destruct c;
-        try(destruct c0); inv H2; inv H4; inv H6; inv H5; inv H7; eauto;
-        try(simpl; assumption); inversion H10; eauto; inversion  H9; eauto;
-        repeat(inversion H11); eauto.
-    + (*Red root: balance returns t unchanged *)
-      assumption.  *)
+  - destruct c;
+    try(bh_solve H); eauto.
+    destruct l; destruct r; simpl.
+    + repeat (rewrite Hl || rewrite Hr); eauto.
+    + simpl in Hl;
+      inv Hl;
+      symmetry in Hr. 
+      destruct c; simpl. 
+      * eauto. 
+      * destruct r1; simpl.
+        -- destruct r2; eauto. destruct c; eauto.  admit.
+        -- destruct r2; simpl; destruct c; try (destruct c0); eauto; admit.
+    + destruct c; eauto. destruct l1.
+      * destruct l2; eauto. destruct c; eauto. 
+        simpl in Hr. injection Hr. clear Hr.   
+        intros.
+        rewrite H1 in Hl;      
+        remember (black_height (node Red l2_1 n0 l2_2)) as hrr eqn:Ehrr.
+        destruct hrr as [h|] eqn:Ehrr'.
+        --  subst k. destruct (0 =? h) eqn:E0h.
+          ++ (*true*)
+            apply Nat.eqb_eq in E0h. subst h.
+            simpl in Ehrr. 
+            remember (black_height l2_1) as hb1 eqn:Ehb1.
+            remember (black_height l2_2) as hb2 eqn:Ehb2.
+            destruct hb1 as [b1|] eqn:E1; [ | discriminate Ehrr ]. destruct hb2 as [b2|] eqn:E2; [ | discriminate Ehrr ].
+            destruct (Nat.eqb b1 b2) eqn:Ebb; [ apply Nat.eqb_eq in Ebb; subst b2 | discriminate Ehrr ].
+            injection Ehrr as Hb; rewrite Nat.add_0_r in Hb.          (* Hb : 0 = b1 *)
+            symmetry in Hb. subst b1. simpl. rewrite <- Ehb1, <- Ehb2.
+            simpl. rewrite H1. reflexivity. 
+        ++ (* false *) 
+           simpl in Ehrr.
+           remember (black_height l2_1) as A eqn:EA.
+           remember (black_height l2_2) as B eqn:EB.
+           destruct A as [h1|]; try discriminate.
+           destruct B as [h2|]; try discriminate.
+           destruct (Nat.eqb h1 h2) eqn:E12; try discriminate.
+           apply Nat.eqb_eq in E12; subst h2.
+           inversion Ehrr; subst h; clear Ehrr.
+           simpl in Hl.
+           rewrite <- EB in Hl. 
+           rewrite <- EA in Hl. 
+           rewrite Nat.eqb_refl in Hl.
+           inversion Hl;
+           destruct h1; simpl in Hl; [discriminate E0h | discriminate Hl].
+      -- simpl in Hl.  
+        remember (black_height l2_1) as A eqn:EA.
+        remember (black_height l2_2) as B eqn:EB.
+        destruct A as [h1|]; try discriminate.
+        destruct B as [h2|]; try discriminate.
+        destruct (Nat.eqb h1 h2) eqn:E12; try discriminate.
+        apply Nat.eqb_eq in E12; subst h2.
+        inversion Ehrr.
+        simpl in Hl.
+        inversion Hl.
+        rewrite H1 in H0. simpl in H0. subst k.
+        symmetry in EA; symmetry in EB.
+        simpl. rewrite EA, EB. rewrite <- H1.   
+        destruct h1; simpl in Hl; [rewrite H1; eauto | discriminate Hl].
+      * destruct c; eauto; destruct l2; admit.
+    + admit.
 
 
 Lemma rb_insert_aux_preserves_invariant :
