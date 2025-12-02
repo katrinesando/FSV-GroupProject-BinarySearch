@@ -789,9 +789,77 @@ Ltac solve_bh_from_hyp :=
 (* usage: `solve_bh_from_hyp.` after you have `H1` (or whichever hyp) in context,
    then `simpl; reflexivity.` to close the goal. *)
 
+Ltac invert_bh H :=
+  simpl in H;
+  (* 1. Handle the nested match black_heights *)
+  repeat match type of H with
+  | context[match black_height ?t with _ => _ end] =>
+      destruct (black_height t) eqn:?; try discriminate
+  end;
+  (* 2. Handle the boolean equality checks *)
+  repeat match type of H with
+  | context[if Nat.eqb ?n ?m then _ else _] =>
+      (* Generate a unique name "Heq" to avoid conflicts in the loop *)
+      let Heq := fresh "Heq" in
+      (* Destruct using that specific name *)
+      destruct (Nat.eqb n m) eqn:Heq; 
+      [ 
+        (* Now we can apply specifically to Heq *)
+        apply Nat.eqb_eq in Heq; 
+        subst 
+      | 
+        (* The false case *)
+        discriminate 
+      ]
+  end;
+  (* 3. Final cleanup *)
+  inversion H; subst; clear H.
+
+
 Lemma balance_preserves_bh :
   forall t k, black_height t = Some k -> black_height (balance t) = Some k.
 Proof.
+  intros [|c l v r] k H; simpl; [assumption|].
+  destruct c; [| simpl in *; assumption].
+  destruct l as [|lc ll lv lr]; destruct r as [|rc rl rv rr].
+  - assumption.
+  - destruct rc; [assumption|].
+    destruct rl as [| rlc rll rlv rlr]; destruct rr as [| rrc rrl rrv rrr]; try (simpl; assumption).
+    + destruct rrc; try assumption. invert_bh H; simpl; rewrite H1; simpl. rewrite Heqo; rewrite Heqo0.
+      rewrite Nat.eqb_refl.  replace (n0 + 0) with n0 in H1 by lia. destruct n0 eqn:Hn0.
+      * injection H1; intros; subst. simpl. reflexivity.
+      * inversion H1.
+    + destruct rlc; try assumption. invert_bh H; simpl; rewrite H1; simpl. rewrite Heqo; rewrite Heqo0.
+      replace (n0 + 0 + 0) with n0 in H1 by lia. destruct n0 eqn:Hn0.
+      * rewrite Nat.eqb_refl. simpl. assumption.
+      * inversion H1.
+    + destruct rlc; destruct rrc; try assumption.
+      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
+        replace (n0 + 1 + 0) with (n0 + 1) in H1 by lia. Search(_+1). rewrite Nat.add_1_r in H1. inversion H1.
+      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
+        replace (n0 + 0 + 0) with (n0 + 0) in H1 by lia. rewrite Heq in H1. rewrite Nat.add_1_r in H1. inversion H1.
+      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
+        replace (n0 + 0 + 0) with (n0) in H1 by lia. destruct n0 eqn:Hn0.
+        -- rewrite <- Heq. simpl. assumption.
+        -- assumption.
+  - destruct lc; [assumption|].
+    destruct ll as [| llc lll llv llr]; destruct lr as [|lrc lrl lrv lrr]; try (simpl; assumption).
+    + destruct lrc; try assumption. invert_bh H; simpl. rewrite H1. rewrite Heqo; rewrite Heqo0.
+      replace (n0 + 0) with n0 in H1 by lia. destruct n0.
+      * simpl in *. assumption.
+      * assumption.
+    + destruct llc; try assumption. invert_bh H; simpl. rewrite Heqo. rewrite Heqo0. 
+      replace (n0 + 0) with n0 in Heq by lia. rewrite Heq. simpl in *. reflexivity.
+
+    + destruct llc; destruct lrc; try assumption.
+      * invert_bh H; simpl. lia.
+      * invert_bh H; simpl. lia. 
+      * invert_bh H; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2. repeat rewrite Nat.eqb_refl.
+        assert (n2 = 0) by lia. rewrite H. rewrite Nat.eqb_refl. assert (n0 = 0) by lia. rewrite H0. simpl. reflexivity. 
+  - destruct lc; destruct rc; try assumption.
+    + admit.
+    + admit.
+    + admit. 
 Admitted.
   (* intros [|c l v r] k H; simpl. 
   - assumption.
