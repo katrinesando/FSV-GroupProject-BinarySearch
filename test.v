@@ -16,7 +16,6 @@ Inductive rb_tree :=
 Definition rb_tree1 := correct rb tree
 Definition rb_tree2 := not correct tree 
 *)
-
 (* Helper functions *)
 Inductive greater :  nat -> rb_tree -> Prop :=
 |leaf_greater : forall n, greater n leaf
@@ -151,6 +150,17 @@ Fixpoint black_height (t: rb_tree) : option nat :=
      end
   end.
 
+Definition root_black (t: rb_tree) : Prop :=
+  match t with
+  | node Black _ _ _ => True
+  | leaf => True
+  | _ => False
+  end.
+
+(* Definition rb_invariant (t: rb_tree) : Prop :=
+  root_black t /\ rb_sorted t /\ no_red_red t /\ exists k, black_height t = Some k. *)
+
+(* This is too weak - gives problems in rb_insert_aux*)
 Definition rb_invariant (t: rb_tree) : Prop :=
   rb_sorted t /\ no_red_red t /\ exists k, black_height t = Some k.
 
@@ -714,6 +724,7 @@ Proof.
       end.
 Qed.
 
+
 Ltac solve_no_red_red :=
   repeat match goal with
   | [ |- no_red_red leaf ] => constructor
@@ -760,529 +771,377 @@ Proof.
         repeat(constructor); eauto.
 Qed.
 
-Ltac solve_bh_from_hyp :=
-  match goal with
-  | [ H : _ |- _ ] =>
-    let Ht := fresh "Hbh" in
-    (* Work on a local copy so we can clear it after inversion *)
-    pose proof H as Ht;
-    simpl in Ht;
-    (* remember and destruct any nested black_height calls *)
-    repeat match type of Ht with
-    | context[black_height ?t] =>
-        let He := fresh "He" in
-        remember (black_height t) as He eqn:He;
-        destruct (black_height t) eqn:He; [ clear He | discriminate Ht ]
-    end;
-    (* destruct Nat.eqb occurrences, turning true branches into equalities *)
-    repeat match type of Ht with
-    | context[Nat.eqb ?a ?b] =>
-        let E := fresh "E" in
-        destruct (Nat.eqb a b) eqn:E;
-        [ apply Nat.eqb_eq in E; subst a | discriminate Ht ]
-    end;
-    (* now Ht must be of shape Some _ = Some _; invert it to get numeric equalities *)
-    inversion Ht; clear Ht; try subst
+
+Ltac bh_prepare H :=
+  lazymatch type of H with
+  | black_height (node Black ?l ?v ?r) = Some ?k =>
+      let Heq := fresh "Hbh" in
+      pose proof H as Heq; simpl in Heq;
+      remember (black_height l) as Hbl eqn:Hl;
+      remember (black_height r) as Hbr eqn:Hr;
+      destruct Hbl as [hl|] eqn:Ehl; [ | discriminate Heq ];
+      destruct Hbr as [hr|] eqn:Ehr; [ | discriminate Heq ];
+      destruct (Nat.eqb hl hr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst hr | discriminate Heq ];
+      injection Heq as Hk; clear Heq; subst k
+  | _ => fail "bh_prepare: hypothesis must have form black_height (node Black l v r) = Some k"
   end.
 
-(* usage: `solve_bh_from_hyp.` after you have `H1` (or whichever hyp) in context,
-   then `simpl; reflexivity.` to close the goal. *)
-
-Ltac invert_bh H :=
-  simpl in H;
-  (* 1. Handle the nested match black_heights *)
-  repeat match type of H with
-  | context[match black_height ?t with _ => _ end] =>
-      destruct (black_height t) eqn:?; try discriminate
-  end;
-  (* 2. Handle the boolean equality checks *)
-  repeat match type of H with
-  | context[if Nat.eqb ?n ?m then _ else _] =>
-      (* Generate a unique name "Heq" to avoid conflicts in the loop *)
-      let Heq := fresh "Heq" in
-      (* Destruct using that specific name *)
-      destruct (Nat.eqb n m) eqn:Heq; 
-      [ 
-        (* Now we can apply specifically to Heq *)
-        apply Nat.eqb_eq in Heq; 
-        subst 
-      | 
-        (* The false case *)
-        discriminate 
-      ]
-  end;
-  (* 3. Final cleanup *)
-  inversion H; subst; clear H.
-Ltac solve_balance_bh :=
-  repeat match goal with
-    (* Solve impossible constructor equalities *)
-    | [ |- None = Some _ ] => 
-        exfalso; try congruence; try lia
-    | [ |- Some _ = None ] => 
-        exfalso; try congruence; try lia
-
-    (* Merge conflicting black_height hypotheses *)
-    | [ H1: black_height ?t = Some ?v1, H2: black_height ?t = Some ?v2 |- _ ] => 
-        assert (v1 = v2) by (rewrite H1 in H2; injection H2; auto);
-        subst; 
-        clear H2
-
-    | [H: black_height _ = Some _ |- _] => 
-        invert_bh H; simpl
-    | [ H: Some _ = Some _ |- _ ] => 
-        injection H as H; try subst
-    | [ H: ?x = ?y |- _ ] => 
-        first [ 
-            discriminate H 
-          | is_var x; subst x 
-          | is_var y; subst y 
-        ]
-
-    (* Destruct stuck boolean checks (Goal) *)
-    | [ |- context [ if ?n =? ?m then _ else _ ] ] => 
-        destruct (Nat.eqb_spec n m); simpl
-
-    (* Destruct stuck Nat matches (Goal) *)
-    | [ |- context [ match ?n with | 0 => _ | S _ => _ end ] ] => 
-        is_var n; destruct n; simpl
-
-    (* Destruct stuck Colors/Variables *)
-    | [ |- context [ match ?c with | Red => _ | Black => _ end ] ] => 
-        is_var c; 
-        destruct c; 
-        simpl in *
-
-    (* 9. Destruct stuck Boolean checks inside Hypotheses *)
-    | [ H: context [ match (if ?n =? ?m then _ else _) with _ => _ end ] |- _ ] => 
-        destruct (Nat.eqb_spec n m); simpl in H
-
-    (* Arithmetic Simplification *)
-    | [ |- context [ color_eqb _ ] ] => unfold color_eqb      
-    | [ |- context [ ?n =? ?n ] ] => rewrite Nat.eqb_refl
-    | [ |- context [ _ + 1 ] ] => rewrite Nat.add_1_r; simpl
-    | [ H: context [ _ + 1] |- _] => rewrite Nat.add_1_r in H; simpl in H
-    | [ |- context [ _ + 0 ] ] => rewrite Nat.add_0_r
-    | [ H: context [ _ + 0 ] |- _ ] => rewrite Nat.add_0_r in H
-
-    (* Final Solvers *)
-    | [ |- black_height _ = _ ] => simpl
-    | [ Heqon: black_height _ = Some _ |- _] => rewrite Heqon
-    | [ |- _ = _ ] => reflexivity
-    | [ |- _ ] => assumption
+Ltac bh_solve H :=
+  lazymatch type of H with
+  | black_height (node Black ?l ?v ?r) = Some ?k =>
+      let Heq := fresh "Hbh" in
+      pose proof H as Heq; simpl in Heq;
+      remember (black_height l) as Hbl eqn:Hl;
+      remember (black_height r) as Hbr eqn:Hr;
+      destruct Hbl as [hl|] eqn:Ehl; [ | discriminate Heq ];
+      destruct Hbr as [hr|] eqn:Ehr; [ | discriminate Heq ];
+      destruct (Nat.eqb hl hr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst hr | discriminate Heq ];
+      injection Heq; intros; clear Heq;
+      (* simplify the goal using the recorded Hl/Hr and finish if possible *)
+      repeat (rewrite Hl || rewrite Hr); simpl; try reflexivity
+  | _ => fail "bh_solve: hypothesis must have form black_height (node Black l v r) = Some k"
   end.
 
+
+Ltac bh_solve_test H :=
+  lazymatch type of H with
+  | black_height (node Black ?l ?v ?r) = Some ?k =>
+      let Heq := fresh "Hbh" in
+      pose proof H as Heq; simpl in Heq;
+      remember (black_height l) as Hbl eqn:Hl1;
+      remember (black_height r) as Hbr eqn:Hr1;
+      destruct Hbl as [hl|] eqn:Ehl1; [ | discriminate Heq ];
+      destruct Hbr as [hr|] eqn:Ehr1; [ | discriminate Heq ];
+      destruct (Nat.eqb hl hr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst hr | discriminate Heq ];
+      injection Heq; intros; clear Heq;
+      (* simplify the goal using the recorded Hl/Hr and finish if possible *)
+      repeat (rewrite Hl1 || rewrite Hr1); simpl; try reflexivity
+  | _ => fail "bh_solve: hypothesis must have form black_height (node Black l v r) = Some k"
+  end.
 
 Lemma balance_preserves_bh :
   forall t k, black_height t = Some k -> black_height (balance t) = Some k.
 Proof.
-  intros [|c l v r] k H; simpl; [assumption|].
-  destruct c; [| simpl in *; assumption].
-  destruct l as [|lc ll lv lr]; destruct r as [|rc rl rv rr].
+  intros [|c l v r] k H; simpl. 
   - assumption.
-  - destruct rc; [assumption|].
-    destruct rl as [| rlc rll rlv rlr]; destruct rr as [| rrc rrl rrv rrr]; try (simpl; assumption).
-    + destruct rrc; try assumption. invert_bh H; simpl; rewrite H1; simpl. rewrite Heqo; rewrite Heqo0.
-      rewrite Nat.eqb_refl.  replace (n0 + 0) with n0 in H1 by lia. destruct n0 eqn:Hn0.
-      * injection H1; intros; subst. simpl. reflexivity.
-      * inversion H1.
-    + destruct rlc; try assumption. invert_bh H; simpl; rewrite H1; simpl. rewrite Heqo; rewrite Heqo0.
-      replace (n0 + 0 + 0) with n0 in H1 by lia. destruct n0 eqn:Hn0.
-      * rewrite Nat.eqb_refl. simpl. assumption.
-      * inversion H1.
-    + destruct rlc; destruct rrc; try assumption.
-      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
-        replace (n0 + 1 + 0) with (n0 + 1) in H1 by lia. Search(_+1). rewrite Nat.add_1_r in H1. inversion H1.
-      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
-        replace (n0 + 0 + 0) with (n0 + 0) in H1 by lia. rewrite Heq in H1. rewrite Nat.add_1_r in H1. inversion H1.
-      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
-        replace (n0 + 0 + 0) with (n0) in H1 by lia. destruct n0 eqn:Hn0.
-        -- rewrite <- Heq. simpl. assumption.
-        -- assumption.
-  - destruct lc; [assumption|].
-    destruct ll as [| llc lll llv llr]; destruct lr as [|lrc lrl lrv lrr]; try (simpl; assumption).
-    + destruct lrc; try assumption. invert_bh H; simpl. rewrite H1. rewrite Heqo; rewrite Heqo0.
-      replace (n0 + 0) with n0 in H1 by lia. destruct n0.
-      * simpl in *. assumption.
-      * assumption.
-    + destruct llc; try assumption. invert_bh H; simpl. rewrite Heqo. rewrite Heqo0. 
-      replace (n0 + 0) with n0 in Heq by lia. rewrite Heq. simpl in *. reflexivity.
-
-    + destruct llc; destruct lrc; try assumption.
-      * invert_bh H; simpl. lia.
-      * invert_bh H; simpl. lia. 
-      * invert_bh H; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2. repeat rewrite Nat.eqb_refl.
-        assert (n2 = 0) by lia. rewrite H. rewrite Nat.eqb_refl. assert (n0 = 0) by lia. rewrite H0. simpl. reflexivity. 
-  - destruct lc; destruct rc; try assumption.
-    + destruct rl as [| rlc rll rlv rlr]; destruct rr as [| rrc rrl rrv rrr]; try assumption.
-      * destruct rrc; try assumption. invert_bh H; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2.
-        repeat rewrite Nat.eqb_refl. rewrite H1. rewrite Nat.add_1_r. simpl. destruct (n2+0).
-        -- rewrite Nat.add_1_r in H1. simpl in H1. assumption.
-        -- assumption.
-      * destruct rlc; try assumption. invert_bh H; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2. 
-        replace (n0+1) with n2 by lia. replace (n2) with 0 by lia.  repeat rewrite Nat.eqb_refl. reflexivity.
-      
-      * destruct rlc; destruct rrc; try assumption.
-        -- invert_bh H; simpl; rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4.
-           replace (n0 + 1) with (n2 + 1) by lia. 
-           repeat rewrite Nat.eqb_refl.
-           replace (n2 + 1 + 1) with (n4 + 1) by lia. 
-           rewrite Nat.eqb_refl. auto.
-        -- invert_bh H; simpl; rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4.
-           replace (n0 + 1) with (n2 ) by lia. 
-           repeat rewrite Nat.eqb_refl.
-           replace (n2) with (n4 + 1) by lia. 
-           repeat rewrite Nat.eqb_refl. auto. 
-        -- invert_bh H; simpl; rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4.
-           replace (n0 + 1) with (n2 ) by lia. 
-           repeat rewrite Nat.eqb_refl.
-           replace (n2) with (n4 + 0) by lia. 
-           repeat rewrite Nat.eqb_refl. auto.      
-    + destruct ll as [| llc lll llv llr]; destruct lr as [| lrc lrl lrv lrr]; try assumption.
-      * destruct lrc; try assumption. invert_bh H; simpl; rewrite H1.
-        -- rewrite Heqo, Heqo0, Heqo1, Heqo2. destruct n0 eqn:Hn0; destruct (n1 =? n2) eqn:Heq; try assumption.
-           rewrite Nat.add_1_r. simpl in *. rewrite Nat.add_1_r in H1. assumption.
-        -- rewrite Heqo, Heqo0, Heqo1, Heqo2. destruct n0; try assumption.
-        -- rewrite Heqo, Heqo0, Heqo1. destruct n0; try assumption.
-    
-      * invert_bh H; simpl. destruct llc; simpl; try assumption.
-        -- unfold color_eqb in Heq. rewrite Nat.add_1_r in Heq. inversion Heq. 
-        -- unfold color_eqb in Heq0, Heq. lia.
-      
-      * destruct llc; try assumption; invert_bh H; simpl.
-        -- destruct lrc; try assumption; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4;
-           repeat rewrite Nat.eqb_refl.
-           --- unfold color_eqb in Heq. rewrite Heq. rewrite Nat.eqb_refl. replace (n2+1+0) with (n4+1) by lia.
-               rewrite Nat.eqb_refl. reflexivity.
-           --- simpl in *. replace (n0+1) with n2 by lia. rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4. repeat rewrite Nat.eqb_refl. replace n2 with (n4+1) by lia.
-               repeat rewrite Nat.eqb_refl. rewrite Nat.add_0_r. replace (n0+1) with (n4+1) by lia. repeat rewrite Nat.eqb_refl. auto.
-        -- rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4. repeat rewrite Nat.eqb_refl. destruct (color_eqb lrc).
-           --- replace (n2 + 0) with (n4 + 1) by lia. rewrite Nat.eqb_refl. replace (n0+1) with (n4+1+1) by lia.
-               rewrite Nat.eqb_refl. replace (n4+1+1+0) with (n0+0+0+1) by lia. reflexivity.
-           --- replace (n2 + S n) with (n4+1) by lia. rewrite Nat.eqb_refl. replace (n0+1) with (n4+1+1) by lia. rewrite Nat.eqb_refl.
-               replace (n4+1+1+0) with (n0+0+0+1) by lia. reflexivity.     
-    + destruct ll; destruct lr; destruct rl; destruct rr; try assumption; simpl;
-    
-    repeat match goal with
-
-      (* Solve impossible constructor equalities*)
-      | [ |- None = Some _ ] => 
-          exfalso; try congruence; try lia
-      | [ |- Some _ = None ] => 
-          exfalso; try congruence; try lia
-
-      (* Merge conflicting black_height hypotheses *)
-      | [ H1: black_height ?t = Some ?v1, H2: black_height ?t = Some ?v2 |- _ ] => 
-          assert (v1 = v2) by (rewrite H1 in H2; injection H2; auto);
-          subst; 
-          clear H2
-
-      (* Invert domain-specific hypotheses *)
-      | [H: black_height _ = Some k |- _] => 
-          invert_bh H; simpl
-
-      (* Inject/Subst simple equalities *)
-      | [ H: Some _ = Some _ |- _ ] => 
-          injection H as H; try subst
-      | [ H: ?x = ?y |- _ ] => 
-          first [ 
-              discriminate H 
-            | is_var x; subst x 
-            | is_var y; subst y 
-          ]
-
-      (* Destruct stuck boolean checks (Goal) *)
-      | [ |- context [ if ?n =? ?m then _ else _ ] ] => 
-          destruct (Nat.eqb_spec n m); simpl
-
-      (* Destruct stuck Nat matches (Goal) *)
-      | [ |- context [ match ?n with | 0 => _ | S _ => _ end ] ] => 
-          is_var n; destruct n; simpl
-
-      (* Destruct stuck Colors/Variables *)
-      | [ |- context [ match ?c with | Red => _ | Black => _ end ] ] => 
-          is_var c; 
-          destruct c; 
-          simpl in *
-
-      (* Destruct stuck Boolean checks inside Hypotheses *)
-      | [ H: context [ match (if ?n =? ?m then _ else _) with _ => _ end ] |- _ ] => 
-          destruct (Nat.eqb_spec n m); simpl in H
-
-      (* Arithmetic Simplification *)
-      | [ |- context [ color_eqb _ ] ] => unfold color_eqb      
-      | [ |- context [ ?n =? ?n ] ] => rewrite Nat.eqb_refl
-      | [ |- context [ _ + 1 ] ] => rewrite Nat.add_1_r; simpl
-      | [ H: context [ _ + 1] |- _] => rewrite Nat.add_1_r in H; simpl in H
-      | [ |- context [ _ + 0 ] ] => rewrite Nat.add_0_r
-      | [ H: context [ _ + 0 ] |- _ ] => rewrite Nat.add_0_r in H
-
-      (*  Final Solvers *)
-      | [ |- black_height _ = _ ] => simpl
-      | [ Heqon: black_height _ = Some _ |- _] => rewrite Heqon
-      | [ |- _ = _ ] => reflexivity
-      | [ |- _ ] => assumption
-    end.
-Qed.
-
-Lemma balance_preserves_black_height :
-  forall t k,
-    black_height t = Some k ->
-    exists k', black_height (balance t) = Some k'.
-Proof.
-  intros t k H.
-  destruct t as [| c l v r]; simpl in *.
-  - (* t = leaf *) inversion H; subst. simpl. exists 0. reflexivity.
-  - (* t = node c l v r *)
-    simpl in H.
-    (* compute children black_heights *)
-    destruct (black_height l) eqn:Hl; destruct (black_height r) eqn:Hr; try discriminate.
-    destruct (Nat.eqb n n0) eqn:Heq; try discriminate.
-    apply Nat.eqb_eq in Heq; subst.
-    inversion H; subst k; clear H.
-    (* Now do a case analysis on the shapes that `balance` matches.
-       Most cases are simple: after simplification the black_height of
-       the balanced tree is directly Some (...) using Hl and Hr. *)
-    simpl.
-    destruct c.
-    + (* c = Black or Red: handle both the rotation patterns and no-op *)
-      (* To handle the rotation patterns we inspect l and r constructors. *)
-      destruct l as [| lc la lx lb]; simpl; try (exists (n + color_eqb Black); (simpl; rewrite Hl, Hr, Nat.eqb_refl; reflexivity)).
-      * (* l = leaf *) 
-        destruct r as [| rc ra rx rb]; simpl;
-          try (exists (n + color_eqb Black); simpl; rewrite Hl, Hr, Nat.eqb_refl; reflexivity).
-        -- (* r = node ... *) 
-           (* no rotation: balance returns original node *)
-           exists n0. simpl. rewrite <- Hl.  eauto. admit.
-        -- (* other r-shapes covered by same computation *)
-           exists n0. simpl. rewrite <- Hl. eauto. admit.
-      * (* l = node lc la lx lb *)
-        (* many subcases where balance rotates; in all cases the child black_heights
-           are built from Hl and Hr and evaluation yields Some _ *)
-        destruct la; destruct lb; destruct r; (* push through constructors *)
-        try (exists n0; simpl; rewrite Hl, Hr, Nat.eqb_refl; eauto); eauto; admit.
-    + (* c = Red *)
-      (* balance only rotates when c = Black, so when c = Red balance is identity *)
-      exists n0. simpl. rewrite Hl, Hr, Nat.eqb_refl. eauto.
+  - destruct c;
+    try(bh_solve H); eauto.
+    destruct l; destruct r; simpl.
+    + repeat (rewrite Hl || rewrite Hr); eauto.
+    + simpl in Hl;
+      inv Hl;
+      symmetry in Hr. 
+      destruct c; simpl. 
+      * eauto. 
+      * destruct r1; simpl.
+        -- destruct r2; eauto. destruct c; eauto.  
+            simpl in Hr.
+            remember (black_height (node Red r2_1 n0 r2_2)) as hrr eqn:Ehrr.
+            destruct hrr as [h|] eqn:Ehrr'.
+            ++ simpl in Hr. destruct (0 =? h) eqn:E0h. 
+              **  apply Nat.eqb_eq in E0h. subst h.
+                  simpl in Ehrr. 
+                  remember (black_height r2_1) as hb1 eqn:Ehb1.
+                  remember (black_height r2_2) as hb2 eqn:Ehb2.
+                  destruct hb1 as [b1|] eqn:E1; [ | discriminate Ehrr ]. destruct hb2 as [b2|] eqn:E2; [ | discriminate Ehrr ].
+                  destruct (Nat.eqb b1 b2) eqn:Ebb; [ apply Nat.eqb_eq in Ebb; subst b2 | discriminate Ehrr ].
+                  injection Ehrr as Hb; rewrite Nat.add_0_r in Hb.          (* Hb : 0 = b1 *)
+                  symmetry in Hb. subst b1. simpl. rewrite <- Ehb1, <- Ehb2.
+                  simpl. reflexivity. 
+              **  simpl in Ehrr.
+                  remember (black_height r2_1) as A eqn:EA.
+                  remember (black_height r2_2) as B eqn:EB.
+                  destruct A as [h1|]; try discriminate.
+                  destruct B as [h2|]; try discriminate.
+                  destruct (Nat.eqb h1 h2) eqn:E12; try discriminate.
+                  apply Nat.eqb_eq in E12; subst h2.
+                  inversion Ehrr; subst h; clear Ehrr.
+                  simpl in Hr.
+                  inversion Hr;
+                  destruct h1; simpl in Hr; [discriminate E0h | discriminate Hr].
+            ++ simpl in Hr.  
+              remember (black_height r2_1) as A eqn:EA.
+              remember (black_height r2_2) as B eqn:EB.
+              destruct A as [h1|]; try discriminate.
+              destruct B as [h2|]; try discriminate.
+              destruct (Nat.eqb h1 h2) eqn:E12; try discriminate.
+              apply Nat.eqb_eq in E12; subst h2.
+              inversion Ehrr.
+              simpl in Hr.
+              inversion Hr.
+              rewrite H1 in H2. simpl in H2.
+              symmetry in EA; symmetry in EB.
+              simpl. rewrite EA, EB.    
+              destruct h1; simpl in Hr; [rewrite H1; eauto | discriminate Hr].
+        -- destruct r2; simpl; destruct c; try (destruct c0); eauto.
+            ++ simpl in H.
+              remember (black_height (node Red (node Red r1_1 n0 r1_2) n leaf)) as hr eqn:Eh.
+              destruct hr as [h|] eqn:Ehr.
+              simpl in H.
+              destruct (0 =? h) eqn:E0h.
+               **  apply Nat.eqb_eq in E0h. subst h.
+                  simpl in Eh. 
+                  remember (black_height r1_1) as hb1 eqn:Ehb1.
+                  remember (black_height r1_2) as hb2 eqn:Ehb2.
+                  destruct hb1 as [b1|] eqn:E1; [ | discriminate Eh ]. destruct hb2 as [b2|] eqn:E2; [ | discriminate Eh ].
+                  destruct (Nat.eqb b1 b2) eqn:Ebb; [ apply Nat.eqb_eq in Ebb; subst b2 | discriminate Eh ].
+                  rewrite Nat.add_0_r in Eh. subst hb1.          (* Hb : 0 = b1 *)
+                  symmetry in Eh.  simpl. rewrite <- Ehb1, <- Ehb2.
+                  simpl. eauto. admit. 
+              **  simpl in Eh.
+                  remember (black_height r1_1) as A eqn:EA.
+                  remember (black_height r1_2) as B eqn:EB.
+                  destruct A as [h1|]; try discriminate.
+                  destruct B as [h2|]; try discriminate.
+                  destruct (Nat.eqb h1 h2) eqn:E12; try discriminate.
+                  apply Nat.eqb_eq in E12; subst h2.
+                  inversion Eh; subst hr; clear Eh.
+                  simpl in Hr.
+                  inversion Hr. simpl; admit.
+                  (* destruct h1; simpl in Hr; [discriminate E0h | discriminate Hr]. *)
+                ** admit.
+            ++ admit.
+            ++ admit.
+            ++ admit.
+    + destruct c; eauto. destruct l1.
+      * destruct l2; eauto. destruct c; eauto. 
+        simpl in Hr. injection Hr. clear Hr.   
+        intros.
+        rewrite H1 in Hl;      
+        remember (black_height (node Red l2_1 n0 l2_2)) as hrr eqn:Ehrr.
+        destruct hrr as [h|] eqn:Ehrr'.
+        --  subst k. destruct (0 =? h) eqn:E0h.
+          ++ (*true*)
+            apply Nat.eqb_eq in E0h. subst h.
+            simpl in Ehrr. 
+            remember (black_height l2_1) as hb1 eqn:Ehb1.
+            remember (black_height l2_2) as hb2 eqn:Ehb2.
+            destruct hb1 as [b1|] eqn:E1; [ | discriminate Ehrr ]. destruct hb2 as [b2|] eqn:E2; [ | discriminate Ehrr ].
+            destruct (Nat.eqb b1 b2) eqn:Ebb; [ apply Nat.eqb_eq in Ebb; subst b2 | discriminate Ehrr ].
+            injection Ehrr as Hb; rewrite Nat.add_0_r in Hb.          (* Hb : 0 = b1 *)
+            symmetry in Hb. subst b1. simpl. rewrite <- Ehb1, <- Ehb2.
+            simpl. rewrite H1. reflexivity. 
+        ++ (* false *) 
+           simpl in Ehrr.
+           remember (black_height l2_1) as A eqn:EA.
+           remember (black_height l2_2) as B eqn:EB.
+           destruct A as [h1|]; try discriminate.
+           destruct B as [h2|]; try discriminate.
+           destruct (Nat.eqb h1 h2) eqn:E12; try discriminate.
+           apply Nat.eqb_eq in E12; subst h2.
+           inversion Ehrr; subst h; clear Ehrr.
+           simpl in Hl.
+           rewrite <- EB in Hl. 
+           rewrite <- EA in Hl. 
+           rewrite Nat.eqb_refl in Hl.
+           inversion Hl;
+           destruct h1; simpl in Hl; [discriminate E0h | discriminate Hl].
+      -- simpl in Hl.  
+        remember (black_height l2_1) as A eqn:EA.
+        remember (black_height l2_2) as B eqn:EB.
+        destruct A as [h1|]; try discriminate.
+        destruct B as [h2|]; try discriminate.
+        destruct (Nat.eqb h1 h2) eqn:E12; try discriminate.
+        apply Nat.eqb_eq in E12; subst h2.
+        inversion Ehrr.
+        simpl in Hl.
+        inversion Hl.
+        rewrite H1 in H0. simpl in H0. subst k.
+        symmetry in EA; symmetry in EB.
+        simpl. rewrite EA, EB. rewrite <- H1.   
+        destruct h1; simpl in Hl; [rewrite H1; eauto | discriminate Hl].
+      * destruct c; eauto; destruct l2; admit.
+    + admit.
 Admitted.
 
-(* 
-Lemma rb_insert_aux_preserves_invariant :
-  forall x t,
-    rb_invariant t ->
-    (* rb_insert_aux may produce red root; we show invariants hold except possibly root color *)
-    rb_sorted (rb_insert_aux x t) /\ no_red_red (rb_insert_aux x t) /\
-    exists k, black_height (rb_insert_aux x t) = Some k.
-Proof.
-intros x t Hinv.
-  revert x Hinv.
-  induction t as [| c l IHl v r IHr]; intros x Hinv; simpl.
-  - (* t = leaf: rb_insert_aux makes node Red leaf x leaf *)
-    split.
-    + (* sorted *)
-      constructor; constructor.
-    + split.
-      * (* no red-red *)
-        constructor; constructor.
-      * (* black_height exists *)
-        simpl. exists 0. reflexivity.
-  - (* t = node c l v r *)
-    destruct Hinv as [Hsorted [Hnored [k Hbh]]].
-    (* three insertion subcases: equal key, go right, go left *)
-    simpl. destruct (v =? x) eqn:Heq.
-    + apply Nat.eqb_eq in Heq; subst.
-      repeat split; eauto.
-    + (* v <> x *)
-      destruct (v <? x) eqn:Hlt.
-      * (* go into right subtree and then balance *)
-        destruct c.
-        -- simpl in Hbh.
-          (* black_height l = Some k and black_height r = Some k *)
-          destruct (black_height l) eqn:Hbl; try discriminate.
-          destruct (black_height r) eqn:Hbr; try discriminate.
-          inv Hbh.
-          (* Now you can assert rb_invariant r from H6 H8 Hbr, etc. *)
-          assert (rb_invariant r).
-          {  constructor; eauto; try split; eauto. } by (split; au
-          to).
-          specialize (IHr x H).
-        inv Hsorted; inv Hnored;
-        assert (rb_invariant r) as Hinv_r.
-        {
-          split; eauto.
-          simpl in Hbh.
-          try discriminate.
-          
-          destruct (Nat.eqb n n0) eqn:Heqbh; try discriminate.
-          apply Nat.eqb_eq in Heqbh; subst.
-          inversion Hbh; subst.
-          split; eauto.
-        }
-    split.
-        -- (* rb_sorted (balance (node c l v (rb_insert_aux x r))) *)
-           apply (balance_preserves_sorted Black l v (rb_insert_aux x r)).
-           ++ (* left subtree sorted *)
-              exact H2.
-           ++ (* right subtree sorted from IH *)
-              exact Hsorted_r.
-           ++ (* greater v l holds *)
-              exact H4.
-           ++ (* smaller v (rb_insert_aux x r) - preserved *)
-              (* use the small lemma that insertion into right subtree preserves smaller v *)
-              unfold smaller in *.
-              (* use existing lemma or the helper above *)
-              apply (smaller_preserved_by_rb_insert_aux_right v r x H5).
-              (* from Hlt we have v < x *)
-              apply Nat.ltb_lt in Hlt. exact Hlt.
-        -- split.
-           ++ (* no_red_red preserved after balance *)
-              apply (balance_preserves_no_red_red c l v (rb_insert_aux x r)).
-              ** exact H6.
-              ** exact Hnored_r.
-              ** (* extra root-color constraint if needed; balance_preserves_no_red_red should handle it *)
-                 trivial.
-           ++ (* existence of black height after balance *)
-              (* first, get black_height (node c l v (rb_insert_aux x r)) = Some kk *)
-              assert (exists kk, black_height (node c l v (rb_insert_aux x r)) = Some kk) as Hnode_bh.
-              {
-                simpl in Hbh.
-                destruct (black_height l) eqn:Hl; destruct (black_height (rb_insert_aux x r)) eqn:Hr'; try (exfalso; discriminate).
-                destruct (Nat.eqb n n0) eqn:Heqbh; try (exfalso; discriminate).
-                apply Nat.eqb_eq in Heqbh; subst.
-                inversion Hbh; subst.
-                exists n0. reflexivity.
-              }
-              destruct Hnode_bh as [kk Hkk].
-              (* apply balance_preserves_black_height to get final existence *)
-              apply balance_preserves_black_height in Hkk.
-              destruct Hkk as [kk' Hkk'].
-              exists kk'. exact Hkk'.
-      * (* symmetric case: insertion into left subtree, then balance *)
-        inversion Hsorted; subst; clear Hsorted.
-        inversion Hnored; subst; clear Hnored.
-        (* build invariant for l for IHl *)
-        assert (rb_invariant l) as Hinv_l.
-        {
-          split; [exact H2 | split; [exact H6 | ]].
-          simpl in Hbh.
-          destruct (black_height l) eqn:Hl; destruct (black_height r) eqn:Hr;
-            try discriminate.
-          destruct (Nat.eqb n n0) eqn:Heqbh; try discriminate.
-          apply Nat.eqb_eq in Heqbh; subst.
-          inversion Hbh; subst.
-          exists n. exact Hl.
-        }
-        destruct (IHl x Hinv_l) as [Hsorted_l [Hnored_l Hbh_l_ex]].
-        split.
-        -- (* sortedness *)
-           apply (balance_preserves_sorted c (rb_insert_aux x l) v r).
-           ++ exact Hsorted_l.
-           ++ exact H3.
-           ++ (* greater (rb_insert_aux x l) v preserved *)
-              (* use helper that insertion into left subtree preserves greater-than relation *)
-              apply greater_preserved_by_rb_insert_aux_left with (x:=x); try assumption.
-              (* we need x < v from the branch v <? x = false and v =? x = false *)
-              apply Nat.ltb_ge in Hlt. (* Hlt = false -> v <? x = false -> v >= x; but we want x < v *)
-              (* Instead we had destruct (v <? x) eqn:Hlt; here Hlt = false, so v <? x = false -> not (v < x).
-                 But we are in the left-branch, so v <? x = false and v <> x -> so x < v holds. *)
-              assert (x < v).
-              { apply Nat.ltb_lt. apply Nat.ltb_iff in Hlt. (* adjust if necessary *) admit. }
-              exact H.
-           ++ exact H5.
-        -- split.
-           ++ apply (balance_preserves_no_red_red c (rb_insert_aux x l) v r).
-              ** exact Hnored_l.
-              ** exact H7.
-              ** trivial.
-           ++ (* black-height existence *)
-              assert (exists kk, black_height (node c (rb_insert_aux x l) v r) = Some kk).
-              {
-                simpl in Hbh.
-                destruct (black_height (rb_insert_aux x l)) eqn:Hl'; destruct (black_height r) eqn:Hr; try (exfalso; discriminate).
-                destruct (Nat.eqb n n0) eqn:Heqbh; try (exfalso; discriminate).
-                apply Nat.eqb_eq in Heqbh; subst.
-                inversion Hbh; subst.
-                exists n0. reflexivity.
-              }
-              destruct H as [kk Hkk].
-              apply balance_preserves_black_height in Hkk.
-              destruct Hkk as [kk' Hkk'].
-              exists kk'. exact Hkk'.
+(* Helper Lemmas for rb_insert_aux_preservers_invariant*)
+Lemma rb_invariant_subtrees :
+forall c l v r k,
+    black_height (node c l v r) = Some k ->
+    rb_sorted (node c l v r) ->
+    no_red_red (node c l v r) ->
+    (rb_sorted l /\ no_red_red l /\ exists nl, black_height l = Some nl) /\
+    (rb_sorted r /\ no_red_red r /\ exists nr, black_height r = Some nr).
+Proof. 
+  intros c l v r k Hbh Hsorted Hnored.
+  simpl in Hbh.
+  destruct (black_height l) eqn:Hl; [ | discriminate Hbh ].
+  destruct (black_height r) eqn:Hr; [ | discriminate Hbh ].
+  destruct (Nat.eqb n n0) eqn:Heq; [ apply Nat.eqb_eq in Heq; subst n0 | discriminate Hbh ].
+  injection Hbh; intros; clear Hbh; subst k.
+  apply rb_sorted_node_inv in Hsorted as [Hgt_lv [Hsm_vr [Hrb_l Hrb_r]]].
+  inversion Hnored as [| ? ? ? Hnored_l Hnored_r | ? ? ? ? ? Hnored_l Hnored_r]; clear Hnored.
+  repeat(split; eauto). repeat (split); eauto.
 Qed.
-Admitted. *)
-(* 2) Helper lemmas about ordering preservation when inserting into one side. *)
+
 Lemma smaller_preserved_by_insert_right :
   forall v x r,
     smaller v r ->
-    (v <? x) = true ->
+    v <? x = true ->
     smaller v (rb_insert_aux x r).
 Proof.
-  intros. induction r; simpl in *.
-  - constructor; admit.
-  - (* pattern: use IH, or use balance_preserves_sorted machinery for shapes *) admit.
-Admitted.
-
+  intros. unfold rb_insert_aux. simpl. eauto.
+Admitted. 
 Lemma greater_preserved_by_insert_left :
   forall v x l,
     greater v l ->
-    (v <? x) = false ->
-    (v =? x) = false ->
+    x <? v = true ->
     greater v (rb_insert_aux x l).
+Proof. Admitted.
+
+Lemma rb_insert_aux_preserves_bh_subtree :
+  forall x t k,
+    black_height t = Some k ->
+    black_height (rb_insert_aux x t) = Some k.
+Proof. Admitted.
+
+
+Ltac bh_prepare_new H :=
+  lazymatch type of H with
+  | black_height (node Black ?l ?v ?r) = Some ?k =>
+      let Hcopy := fresh "Hbh_copy" in
+      let Heqn := fresh "Hbh_eq" in
+      remember H as Hcopy eqn:Heqn;
+      simpl in Heqn;
+      remember (black_height l) as Hbl eqn:Hl;
+      remember (black_height r) as Hbr eqn:Hr;
+      destruct Hbl as [hl|] eqn:Ehl; [ | discriminate Heqn ];
+      destruct Hbr as [hr|] eqn:Ehr; [ | discriminate Heqn ];
+      destruct (Nat.eqb hl hr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst hr | discriminate Heqn ];
+      injection Heqn as Hk; clear Heqn; subst k
+  | _ => fail "bh_prepare: hypothesis must have form black_height (node Black l v r) = Some k"
+  end.
+
+Lemma balance_preserves_black_height :
+  forall t k, black_height t = Some k ->
+              black_height (balance t) = Some k.
 Proof.
-  intros. induction l; simpl in *.
-  - constructor; admit.
-  - admit.
 Admitted.
 
 
-Lemma rb_insert_aux_preserves_sorted :
+(* Maybe change to this and then undo the change to invarient *)
+(* forall x t,
+    rb_invariant t ->
+    root_black t ->                      (* ADDED *)
+    rb_sorted (rb_insert_aux x t) /\ no_red_red (rb_insert_aux x t) /\
+    exists k, black_height (rb_insert_aux x t) = Some k. *)
+
+
+
+Lemma rb_insert_aux_preserves_invariant :
   forall x t,
-    rb_sorted t ->
-    rb_sorted (rb_insert_aux x t).
+    rb_invariant t ->
+    root_black t ->                      (* ADDED *)
+    rb_sorted (rb_insert_aux x t) /\ no_red_red (rb_insert_aux x t) /\
+    exists k, black_height (rb_insert_aux x t) = Some k. 
 Proof.
-  intros x t H. 
-  induction t as  [| c l IHl v r IHr].
-  (*do NOT revert anything here; induction on t and use
-     balance_preserves_sorted for the node-case. *)
-  - constructor; eauto.
-  - 
-    (* inv H. *)
-    simpl. destruct (v =? x) eqn:Heq.
-    + apply Nat.eqb_eq in Heq; subst; assumption.
+Admitted.
+  (* intros x t Hinv.
+  revert k Hbh.
+  induction t as [| c l IHl v r IHr]; intros k Hbh; simpl.
+  - (* leaf *)
+    repeat split; try constructor; eauto.
+  - (* node *)
+    destruct (v =? x) eqn:Heq.
+    + (* equal: unchanged *)
+      repeat split; eauto.
     + destruct (v <? x) eqn:Hlt.
-      * (* go right *)
-        (* get facts from original sorted node *)
-        apply rb_sorted_node_inv in H as [Hgt_v [Hsm_v [Hrb_l Hrb_r]]].
-        (* recurse on right subtree *)
-        specialize (IHr Hrb_r).
-        (* show smaller v (rb_insert_aux x r) using helper lemma below *)
-        assert (Hsm_v_r' : smaller v (rb_insert_aux x r)).
-        { apply smaller_preserved_by_insert_right with (x:=x); eauto. }
-        (* now the unbalanced node is sorted, lift through balance *)
+      * (* insert into right *)
+        pose proof (rb_invariant_subtrees c l v r k Hbh Hsorted Hnored) as [Hinvl Hinvr].
+        destruct Hinvr as [Hsorted_r [Hnored_r [kr Hkr]]];
+        specialize (IHr Hsorted_r Hnored_r kr Hkr);
+        destruct IHr as [Hsorted_r' [Hnored_r' [kr' Hkr']]];
+        (* pre-balance: node c l v r' is sorted *)
         assert (Hnode_sorted : rb_sorted (node c l v (rb_insert_aux x r))).
-        { constructor; assumption. }
-        eapply (balance_preserves_sorted (node c l v (rb_insert_aux x r)) Hnode_sorted).
-      *  (* go left: symmetric *)
-        apply rb_sorted_node_inv in H as [Hgt_v [Hsm_v [Hrb_l Hrb_r]]].
-        specialize (IHl Hrb_l).
-        assert (Hgt_l' : greater v (rb_insert_aux x l)).
-        { apply greater_preserved_by_insert_left with (x:=x); try assumption. }
-        assert (Hnode_sorted : rb_sorted (node c (rb_insert_aux x l) v r)).
-        { constructor; try assumption. }
-        eapply (balance_preserves_sorted (node c (rb_insert_aux x l) v r) Hnode_sorted).
-Qed.
+        { apply rb_sorted_node_inv in Hsorted as [Hgt [Hsm [Hrl Hrr]]].
+          constructor; eauto. try (apply smaller_preserved_by_insert_right); eauto. }
+        remember (rb_insert_aux x r) as r'.
+        destruct Hinvl as [Hsorted_l [Hnored_l [kl Hkl]]].
+        pose proof (nr_node_black v l r' Hnored_l Hnored_r') as Hpre_no_red.
+        destruct c.
+        --  pose proof (balance_preserves_sorted (node Black l v r') Hnode_sorted) as Hbal_sorted.
+            pose proof (balance_preserves_no_red_red (node Black l v r') Hpre_no_red) as Hbal_nored.
+            simpl in Hbh.
+            rewrite Hkl in Hbh.    (* black_height l = Some kl *)
+            rewrite Hkr in Hbh.    (* black_height r = Some kr *)
+            destruct (Nat.eqb kl kr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst kr | discriminate Hbh ].
+            injection Hbh as Hk; subst k.
+            pose proof (rb_insert_aux_preserves_bh_subtree x r kl Hkr) as Hbr'.
+            rewrite <- Heqr' in Hbr'.   (* now Hbr' : black_height r' = Some kl *)
+            split; eauto.
+            split;eauto.
+            exists (kl + 1).
+            assert (Hbht : black_height (node Black l v r') = Some (kl + 1)).
+            { simpl. rewrite Hkl, Hbr'. rewrite Nat.eqb_refl. reflexivity. }
+            pose proof (balance_preserves_black_height (node Black l v r') (kl + 1) Hbht) as Hbh_bal. eauto.
+        -- pose proof (balance_preserves_sorted (node Red l v r') Hnode_sorted) as Hbal_sorted.
+           (* pose proof (balance_preserves_no_red_red (node Red l v r') Hpre_no_red) as Hbal_nored. *)
+           simpl in Hbh.
+           rewrite Hkl in Hbh.    
+           rewrite Hkr in Hbh.
+            destruct (Nat.eqb kl kr) eqn:Heqbh; [ apply Nat.eqb_eq in Heqbh; subst kr | discriminate Hbh ].
+            injection Hbh as Hk; subst k.
+            pose proof (rb_insert_aux_preserves_bh_subtree x r kl Hkr) as Hbr'.
+            rewrite <- Heqr' in Hbr'.   (* now Hbr' : black_height r' = Some kl *)
+            split; eauto.
+            split;eauto.
+            ++ admit.
+            ++ exists (kl + 1).
+            assert (Hbht : black_height (node Red l v r') = Some (kl + 1)).
+            { simpl. rewrite Hkl, Hbr'. rewrite Nat.eqb_refl.  eauto. }
+            pose proof (balance_preserves_black_height (node Red l v r') (kl + 1) Hbht) as Hbh_bal. eauto.
+            
+        (* inv Hnored. 
+          destruct r' as [ | rc rl rv rr ] eqn:Er'.
+          ++ exfalso. apply (rb_insert_aux_never_leaf x r). symmetry. assumption.
+          ++ destruct rc.
+        (* sortedness after balance *)
+        apply balance_preserves_sorted; eauto. *)
+        (* no-red-red after balance *)
+    * admit.
+Admitted. *)
+(*   intros x t [Hsorted [Hnored [k Hbh]]].
+  revert k Hbh.
+  induction t as [| c l IHl v r IHr]; intros k Hbr; simpl.
+  - (*leaf*)
+    repeat(split); try(constructor); eauto.
+  -(*node*)
+    destruct(v=?x) eqn:Heq.
+    + (*equal: do nothing*)
+      repeat(split); eauto.
+    + destruct(v <? x) eqn:Hlt.
+       pose proof (rb_invariant_subtrees c l v r k Hbr Hsorted Hnored) as [Hinvl Hinvr].
+        destruct Hinvr as [Hsorted_r [Hnored_r [kr Hkr]]].
+        specialize (IHr Hsorted_r Hnored_r kr Hkr).
+        destruct IHr as [Hsorted_r' [Hnored_r' [kr' Hkr']]].
+        assert (Hnode_sorted : rb_sorted (node c l v (rb_insert_aux x r))).
+        { apply rb_sorted_node_inv in Hsorted as [Hgt [Hsm [Hrl Hrr]]].
+          constructor; eauto. apply smaller_preserved_by_insert_right; eauto. }
+        assert (Hnode_no_red : no_red_red (node c l v (rb_insert_aux x r))).
+        { inv Hnored. apply nr_node_black; eauto. apply nr_node_red; eauto. constructor; eauto. constructor; eauto.  }
 
-Inductive red_red_at_root : rb_tree -> Prop :=
-| rr_left  : forall a x b y c, red_red_at_root (node Red (node Red a x b) y c)
-| rr_right : forall a x b y c, red_red_at_root (node Red a x (node Red b y c)).
 
-
-Lemma balance_preserves_no_red_red_or_root :
-  forall c l v r,
-    no_red_red l \/ red_red_at_root l ->
-    no_red_red r \/ red_red_at_root r ->
-    no_red_red (balance (node c l v r)) \/ red_red_at_root (balance (node c l v r)).
-Proof. Admitted.
-
+      pose proof (IHr kr Hkr Hsorted_r Hnored_r) as IHr_res.
+      pose proof (rb_invariant_subtrees c l r IHl k Hbh Hsorted Hnored) as [Hinvl Hinvr].
+      destruct Hinvr as [Hsorted_r [Hnored_r [kr Hkr]]].
+      (* destruct IHr as [Hsorted_r' [Hnored_r' [kr' Hkr']]]. *)
+      (* insert into left subtree *)
+      pose proof (IHr Hsorted_r Hnored_r Hkr) as IHr_res.
+      destruct IHr_res as [Hsorted_r' [Hnored_r' [kr' Hkr']]].
+        specialize (IHr x Hinvr).
+        destruct IHr as [Hsorted_r' [Hnored_r' [kr Hkr]]].
+        (* node before balance is sorted/no_red_red and has bh *)
+        assert (Hnode_sorted : rb_sorted (node c l v (rb_insert_aux x r))).
+        { (* greater v l from original sorted; smaller v (rb_insert_aux x r) from helper *)
+          apply rb_sorted_node_inv in Hsorted as [Hgt [Hsm [Hrl Hrr]]].
+          constructor.
+          - (* greater v l *) assumption.
+          - (* smaller v new right *) apply smaller_preserved_by_insert_right; assumption.
+          - (* rb_sorted l *) assumption.
+          - (* rb_sorted new right *) assumption.
+        }
+        assert (Hnode_no_red : no_red_red (node c l v (rb_insert_aux x r))).
+        { apply nr_node_black || apply nr_node_red. inv Hnored; assumption. } *)
 
 Lemma rb_insert_aux_never_leaf : forall x t, rb_insert_aux x t <> leaf.
 Proof.
@@ -1297,252 +1156,33 @@ Proof.
       * simpl in H. pose proof (balance_node_never_leaf c (rb_insert_aux x l) v r) as N.
         apply N in H; assumption.
 Qed.
-(* Lemma make_black_fixes_red_red_at_root :
-  forall t,
-    red_red_at_root t ->
-    no_red_red (make_black t).
-Proof.
-  intros t Hrr.
-  destruct t as [| c l v r]; try inversion Hrr.
-  simpl.
-  (* The new root is Black; children unchanged. *)
-  constructor.
-  - (* no red-red on left child *)
-    inversion Hrr; subst; constructor; assumption.
-  - (* no red-red on right child *)
-    inversion Hrr; subst; constructor; assumption.
-Qed.
-
-Lemma make_black_no_change :
-  forall t,
-    ~ red_red_at_root t ->
-    no_red_red t ->
-    no_red_red (make_black t).
-Proof.
-  intros t Hnotrr Hn.
-  destruct t as [| c l v r]; simpl.
-  - (* leaf: trivial *)
-    constructor.
-  - (* node c l v r *)
-    (* Only structural change is the color of the root. *)
-    constructor; try assumption.
-    (* We must show the children obey no_red_red; they already do. *)
-    inversion Hn; subst; assumption.
-Qed.
- *)
-
- (* Lemma rb_insert_aux_preserves_no_red_red :
-  forall x t,
-    no_red_red t ->
-    no_red_red (rb_insert_aux x t)
-    \/ red_red_at_root (rb_insert_aux x t).
-Proof.
-  intros x t Hn.
-  induction t as [| c l IHl v r IHr]; simpl in *.
-  - (* leaf *)
-    left. constructor; eauto.
-  - (* node *)
-    destruct Hn.
-    destruct Hn as [Hc |Hl Hr].
-    remember (rb_insert_aux x l) as l' eqn:Hl'.
-    remember (rb_insert_aux x r) as r' eqn:Hr'.
-    destruct (x <? v) eqn:Hlt.
-    + (* insert left *)
-      specialize (IHl Hl) as [Hl_safe | Hl_root].
-      * (* left safe *)
-        left. apply balance_preserves_no_red_red_or_root; eauto.
-      * (* left root violation *)
-        right. apply balance_preserves_no_red_red_or_root; eauto.
-    + (* insert right *)
-      specialize (IHr Hr) as [Hr_safe | Hr_root].
-      * left. apply balance_preserves_no_red_red_or_root; eauto.
-      * right. apply balance_preserves_no_red_red_or_root; eauto.
-Qed. *)
-
-Lemma rb_insert_aux_preserves_no_red_red :
-  forall x t,
-    no_red_red t ->
-    no_red_red (rb_insert_aux x t)
-    \/
-    red_red_at_root (rb_insert_aux x t).
-Proof.
-  intros x t Hn.
-  (* revert x Hn. *)
-  induction t as [| c l IHl v r IHr]; 
-  (* intros x Hn;  *)
-  simpl in *.
-  
-  (* Base case: inserting into leaf *)
-  - (* t = leaf *)
-    left. constructor; eauto. (* inserting into leaf produces a single red node; no red-red violation *)
-
-  (* Inductive case: t = node c l v r *)
-  - 
-    inv Hn.
-    destruct (v =? x) eqn:Heq.
-    + (* v = x: no change *)
-      left; constructor; assumption.
-    + (* v ≠ x *)
-      destruct (v <? x) eqn:Hlt.
-      * (* v < x: insert into right subtree *)
-        remember (rb_insert_aux x r) as r' eqn:Heqr'.
-        pose proof (IHr H4) as Hr_res.
-        rewrite  Heqr' in Hr_res.
-        destruct Hr_res as [Hr_safe | Hr_root].
-        -- (* Right insertion safe *)
-          destruct IHr as [Hr1_safe | Hr1_root]; eauto; try(left; apply (balance_preserves_no_red_red (node Black l v r')); eauto; constructor; eauto).
-          rewrite Heqr'; assumption.
-        -- (* Right insertion causes red-red at root *)
-           apply (balance_preserves_no_red_red_or_root Black l v r'); eauto.
-      *
-        remember (rb_insert_aux x l) as l' eqn:Hl'.
-        pose proof (IHl H1) as Hl_res.
-        rewrite Hl' in Hl_res.
-        destruct Hl_res as [Hl_safe | Hl_root].
-        -- destruct IHl as [Hl1_safe | Hl1_root];
-           try(left; apply (balance_preserves_no_red_red (node Black l' v r)); constructor; eauto); eauto.
-           rewrite Hl'. assumption.
-        -- (* Left insertion produced red-red at root *)
-           apply (balance_preserves_no_red_red_or_root Black l' v r); eauto.
-  + destruct (v =? x) eqn:Heq.
-    * (* v = x: no change *)
-      left; constructor; assumption.
-    * destruct (v <? x) eqn:Hlt.
-      remember (rb_insert_aux x r) as r' eqn:Heqr'.
-      specialize (IHr H6).
-      destruct IHr as [Hr_safe | Hr_root].
-        -- (* Right insertion safe: no red-red in r' *)
-          pose proof (rb_insert_aux_never_leaf x r) as Hnever_leaf.
-          destruct (rb_insert_aux x r) as [|cr lr vr rr] eqn:Hr_eq.
-          ++ (* impossible: rb_insert_aux never returns leaf *)
-              exfalso. apply Hnever_leaf. eauto.
-          ++  destruct cr.
-             ** left.
-                constructor; try assumption.
-                rewrite Heqr'. eauto.
-             **  right. rewrite Heqr'. apply rr_right.
-      -- right. rewrite Heqr'. inv Hr_root; rewrite <- H; apply rr_right.
-      --  specialize (IHl H5).
-          destruct IHl as [Hl_safe | Hl_root].
-          ++  destruct (rb_insert_aux x l) as [|cl ll lv lr] eqn:Hl_eq. (*Needs to be first otherwise too weak*)  
-            **(* impossible: rb_insert_aux never returns leaf *)
-            exfalso. apply (rb_insert_aux_never_leaf x l). assumption.
-            **  destruct cl.
-                --- left. constructor; try assumption. eauto.
-                --- right. apply rr_left. 
-           ++ (* Left insertion created red-red at root *)
-            right. inversion Hl_root as [a x' b y c' | a x' b y c']; subst; apply rr_left. 
-Qed.
-
-Lemma rb_insert_preserves_no_red_red :
-  forall x t,
-    no_red_red t ->
-    no_red_red (rb_insert x t).
- Proof.
-  intros x t Hn.
-  unfold rb_insert.
-
-  (* First apply the insert_aux lemma *)
-  destruct (rb_insert_aux_preserves_no_red_red x t Hn)
-           as [Hgood | Hrr].
-
-  - (* Case 1: no red-red was created *)
-    (* Then make_black is a no-op *)
-admit.
-  - (* Case 2: red-red was created at the root *)
-    (* make_black repairs it *)
-    admit.
- Admitted.
-  (* intros x t H.
-  unfold rb_insert.
-  remember (rb_insert_aux x t) as t'.
-  destruct t' as [| c l v r].
-  - (* impossible: rb_insert_aux never returns leaf *)
-    exfalso. apply (rb_insert_aux_never_leaf x t). symmetry. assumption.
-  - (* t' = node c l v r *)
-    (* if there is a red-red at the root, make_black fixes it; otherwise make_black is a no-op *)
-    destruct (red_red_at_root (node c l v r)) eqn:HRR.
-    + (* violation at root fixed by make_black *)
-      apply make_black_fixes_red_red_at_root; assumption.
-    + (* no violation produced; recolor is a no-op on no-red-red roots *)
-      now rewrite make_black_no_change.
-   unfold rb_insert.
-   intros.
-   - (* no violation produced *)
-     now rewrite make_black_no_change.
-   - (* violation at root fixed by make_black *)
-     apply make_black_fixes_red_red_at_root; assumption. *)
-
-
- 
-Lemma rb_insert_aux_preserves_bh_exists :
-  forall x t,
-    (exists k, black_height t = Some k) ->
-    (exists k, black_height (rb_insert_aux x t) = Some k).
-Proof.
-  intros x t [k Hk].
-  (* template: do a separate induction on t. This is the fiddliest; prove a
-     helper lemma that insertion preserves child BHs:
-       rb_insert_aux_preserves_bh_subtree : forall x r kr, black_height r = Some kr -> exists kr', black_height (rb_insert_aux x r) = Some kr'.
-     then combine with balance_preserves_black_height. *)
-   (* induction t; intros x [k Hk]; simpl.
-  - exists 0; reflexivity.
-  - destruct (v =? x).
-    { exists k; assumption. }
-    destruct (v <? x) eqn:Hlt.
-    * specialize (IHt2 x).
-      destruct (IHt2 _) as [k2 H2].
-      { eapply black_height_child_right; eauto. }
-      rewrite H2.
-      exists k; now apply balance_preserves_black_height.
-    * specialize (IHt1 x).
-      destruct (IHt1 _) as [k1 H1].
-      { eapply black_height_child_left; eauto. }
-      rewrite H1.
-      exists k; now apply balance_preserves_black_height. *)
-Admitted.
-
-(* 3) Recombine into the full invariant lemma using the three lemmas.
-   Important: revert only root_black (or whichever single hypothesis you need
-   NOT to be in the IHs) before induction so IHs don't demand root_black on children. *)
-Lemma rb_insert_aux_preserves_invariant :
-  forall x t,
-    rb_invariant t ->
-    rb_sorted (rb_insert_aux x t) /\ no_red_red (rb_insert_aux x t) /\
-    exists k, black_height (rb_insert_aux x t) = Some k.
-Proof.
-  intros x t Hinv.
-  destruct Hinv as [Hsorted [Hnored Hbh_ex]].
-  split.
-  - apply (rb_insert_aux_preserves_sorted x t). exact Hsorted.
-  - split.
-    + apply (rb_insert_aux_preserves_no_red_red x t). exact Hnored.
-    + apply (rb_insert_aux_preserves_bh_exists x t). exact Hbh_ex.
-Qed.
-
 
 (* Final theorem: recoloring root to Black preserves invariants and gives rb_invariant *)
 Theorem rb_insert_correct : forall x t,
   rb_invariant t ->
   rb_invariant (rb_insert x t).
 Proof.
-  intros x t [Hsorted [Hnored [k Hbh]]].
+  intros x t Hinv.
   unfold rb_insert.
-  pose proof (rb_insert_aux_preserves_invariant x t) as Haux.
+  pose proof (rb_insert_aux_preserves_invariant x t Hinv) as Haux.
+  (* destruct Hinv as [Hsorted [Hnored [Hno_red_red [k Hbh]]]]. *)
   remember (rb_insert_aux x t) as t'.
   destruct t' as [ | c l v r ] eqn:E.
   - (* impossible by lemma *)
     exfalso. apply (rb_insert_aux_never_leaf x t). symmetry. assumption.
   -  
-    destruct Haux as [Hsorted' [Hnored' Hbh']].
-    constructor.
+    destruct Haux as [Hsorted' [Hnored' [k' Hbh']]].
     +  (* sortedness preserved *)
-      eauto.
+       
     + split.
       *  (* no-red-red preserved *)
-        eauto.
+      apply rb_sorted_node_inv in Hsorted' as [Hgt [Hsm [Hrl Hrr]]].
+      constructor; eauto.
       *  (* black-height preserved *)
-        exists k. assumption.
+      pose proof (recolor_preserves_no_red_red c l v r Hnored') as Hnored_black.
+      split; [eauto | exists k; eauto]. admit.
+      (* apply rb_insert_aux_preserves_bh_subtree.
+      -- split; [eauto | exists k; eauto].  *)
     + (* recolor to Black preserves invariants *)
       pose proof (recolor_preserves_rb_sorted c l v r Hsorted') as Hsorted_black.
       pose proof (recolor_preserves_no_red_red c l v r Hnored') as Hnored_black.
