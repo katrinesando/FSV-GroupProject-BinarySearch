@@ -1096,7 +1096,7 @@ Lemma rb_insert_aux_preserves_sorted :
     rb_sorted (rb_insert_aux x t).
 Proof.
   intros x t H. 
-  induction t as  [| c l IHl v r IHr].(*do NOT revert anything here; induction on t and use balance_preserves_sorted for the node-case. *)
+  induction t as  [| c l IHl v r IHr]. (*do NOT revert anything here; induction on t and use balance_preserves_sorted for the node-case. *)
   - constructor; eauto.
   - 
     (* inv H. *)
@@ -1337,11 +1337,18 @@ Proof.
         destruct Hnored_or_root as [Hgood | Hroot_viol].
         -- 
            apply (recolor_preserves_no_red_red c l v r Hgood).
-        -- (*Breaks here*)
-           constructor.
-            assert (Hchildren : c = Red /\ no_red_red l /\ no_red_red r).
-            { inversion Hroot_viol; subst; repeat split; eauto. }
-           inversion Hroot_viol; subst. eauto. subst; constructor; assumption.
+        -- constructor. 
+           pose proof (red_red_at_root_children_valid (node c l v r) Hroot_viol) as Hvalid_children.
+           destruct c.
+           ++ inversion Hroot_viol.
+           ++ destruct Hvalid_children as [Hnl Hnr]; assumption.
+           ++ destruct c.
+            --- inversion Hroot_viol.
+            --- pose proof (red_red_at_root_children_valid (node Red l v r) Hroot_viol) as Hvalid.
+  simpl in Hvalid.
+  destruct Hvalid as [_ Hr_valid]. (* Discard left, keep right *)
+  exact Hr_valid.
+
       * (* black_height: handle the recoloring effect *)
         destruct Hbh_aux as [k' Hbh'].
         destruct c; simpl.
