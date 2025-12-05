@@ -1345,9 +1345,9 @@ Proof.
            ++ destruct c.
             --- inversion Hroot_viol.
             --- pose proof (red_red_at_root_children_valid (node Red l v r) Hroot_viol) as Hvalid.
-  simpl in Hvalid.
-  destruct Hvalid as [_ Hr_valid]. (* Discard left, keep right *)
-  exact Hr_valid.
+               simpl in Hvalid.
+               destruct Hvalid as [_ Hr_valid]. (* Discard left, keep right *)
+               assumption.
 
       * (* black_height: handle the recoloring effect *)
         destruct Hbh_aux as [k' Hbh'].
@@ -1355,9 +1355,10 @@ Proof.
         -- (* c = Black: no change in black height *)
            exists k'. exact Hbh'.
         -- (* c = Red: black height increases by 1 *)
-           exists (k' + 1). 
-           simpl in Hbh'. 
-           exact Hbh'.
+            pose proof (black_height_recolor_root Red l v r k' Hbh') as Hrecolored.
+           exists (k' + 1).
+           simpl in *.
+           exact Hrecolored.   
 Qed.
 
 
