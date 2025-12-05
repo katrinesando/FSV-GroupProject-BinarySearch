@@ -1065,151 +1065,7 @@ Proof.
       exists n0. simpl. rewrite Hl, Hr, Nat.eqb_refl. eauto.
 Admitted.
 
-(* 
-Lemma rb_insert_aux_preserves_invariant :
-  forall x t,
-    rb_invariant t ->
-    (* rb_insert_aux may produce red root; we show invariants hold except possibly root color *)
-    rb_sorted (rb_insert_aux x t) /\ no_red_red (rb_insert_aux x t) /\
-    exists k, black_height (rb_insert_aux x t) = Some k.
-Proof.
-intros x t Hinv.
-  revert x Hinv.
-  induction t as [| c l IHl v r IHr]; intros x Hinv; simpl.
-  - (* t = leaf: rb_insert_aux makes node Red leaf x leaf *)
-    split.
-    + (* sorted *)
-      constructor; constructor.
-    + split.
-      * (* no red-red *)
-        constructor; constructor.
-      * (* black_height exists *)
-        simpl. exists 0. reflexivity.
-  - (* t = node c l v r *)
-    destruct Hinv as [Hsorted [Hnored [k Hbh]]].
-    (* three insertion subcases: equal key, go right, go left *)
-    simpl. destruct (v =? x) eqn:Heq.
-    + apply Nat.eqb_eq in Heq; subst.
-      repeat split; eauto.
-    + (* v <> x *)
-      destruct (v <? x) eqn:Hlt.
-      * (* go into right subtree and then balance *)
-        destruct c.
-        -- simpl in Hbh.
-          (* black_height l = Some k and black_height r = Some k *)
-          destruct (black_height l) eqn:Hbl; try discriminate.
-          destruct (black_height r) eqn:Hbr; try discriminate.
-          inv Hbh.
-          (* Now you can assert rb_invariant r from H6 H8 Hbr, etc. *)
-          assert (rb_invariant r).
-          {  constructor; eauto; try split; eauto. } by (split; au
-          to).
-          specialize (IHr x H).
-        inv Hsorted; inv Hnored;
-        assert (rb_invariant r) as Hinv_r.
-        {
-          split; eauto.
-          simpl in Hbh.
-          try discriminate.
-          
-          destruct (Nat.eqb n n0) eqn:Heqbh; try discriminate.
-          apply Nat.eqb_eq in Heqbh; subst.
-          inversion Hbh; subst.
-          split; eauto.
-        }
-    split.
-        -- (* rb_sorted (balance (node c l v (rb_insert_aux x r))) *)
-           apply (balance_preserves_sorted Black l v (rb_insert_aux x r)).
-           ++ (* left subtree sorted *)
-              exact H2.
-           ++ (* right subtree sorted from IH *)
-              exact Hsorted_r.
-           ++ (* greater v l holds *)
-              exact H4.
-           ++ (* smaller v (rb_insert_aux x r) - preserved *)
-              (* use the small lemma that insertion into right subtree preserves smaller v *)
-              unfold smaller in *.
-              (* use existing lemma or the helper above *)
-              apply (smaller_preserved_by_rb_insert_aux_right v r x H5).
-              (* from Hlt we have v < x *)
-              apply Nat.ltb_lt in Hlt. exact Hlt.
-        -- split.
-           ++ (* no_red_red preserved after balance *)
-              apply (balance_preserves_no_red_red c l v (rb_insert_aux x r)).
-              ** exact H6.
-              ** exact Hnored_r.
-              ** (* extra root-color constraint if needed; balance_preserves_no_red_red should handle it *)
-                 trivial.
-           ++ (* existence of black height after balance *)
-              (* first, get black_height (node c l v (rb_insert_aux x r)) = Some kk *)
-              assert (exists kk, black_height (node c l v (rb_insert_aux x r)) = Some kk) as Hnode_bh.
-              {
-                simpl in Hbh.
-                destruct (black_height l) eqn:Hl; destruct (black_height (rb_insert_aux x r)) eqn:Hr'; try (exfalso; discriminate).
-                destruct (Nat.eqb n n0) eqn:Heqbh; try (exfalso; discriminate).
-                apply Nat.eqb_eq in Heqbh; subst.
-                inversion Hbh; subst.
-                exists n0. reflexivity.
-              }
-              destruct Hnode_bh as [kk Hkk].
-              (* apply balance_preserves_black_height to get final existence *)
-              apply balance_preserves_black_height in Hkk.
-              destruct Hkk as [kk' Hkk'].
-              exists kk'. exact Hkk'.
-      * (* symmetric case: insertion into left subtree, then balance *)
-        inversion Hsorted; subst; clear Hsorted.
-        inversion Hnored; subst; clear Hnored.
-        (* build invariant for l for IHl *)
-        assert (rb_invariant l) as Hinv_l.
-        {
-          split; [exact H2 | split; [exact H6 | ]].
-          simpl in Hbh.
-          destruct (black_height l) eqn:Hl; destruct (black_height r) eqn:Hr;
-            try discriminate.
-          destruct (Nat.eqb n n0) eqn:Heqbh; try discriminate.
-          apply Nat.eqb_eq in Heqbh; subst.
-          inversion Hbh; subst.
-          exists n. exact Hl.
-        }
-        destruct (IHl x Hinv_l) as [Hsorted_l [Hnored_l Hbh_l_ex]].
-        split.
-        -- (* sortedness *)
-           apply (balance_preserves_sorted c (rb_insert_aux x l) v r).
-           ++ exact Hsorted_l.
-           ++ exact H3.
-           ++ (* greater (rb_insert_aux x l) v preserved *)
-              (* use helper that insertion into left subtree preserves greater-than relation *)
-              apply greater_preserved_by_rb_insert_aux_left with (x:=x); try assumption.
-              (* we need x < v from the branch v <? x = false and v =? x = false *)
-              apply Nat.ltb_ge in Hlt. (* Hlt = false -> v <? x = false -> v >= x; but we want x < v *)
-              (* Instead we had destruct (v <? x) eqn:Hlt; here Hlt = false, so v <? x = false -> not (v < x).
-                 But we are in the left-branch, so v <? x = false and v <> x -> so x < v holds. *)
-              assert (x < v).
-              { apply Nat.ltb_lt. apply Nat.ltb_iff in Hlt. (* adjust if necessary *) admit. }
-              exact H.
-           ++ exact H5.
-        -- split.
-           ++ apply (balance_preserves_no_red_red c (rb_insert_aux x l) v r).
-              ** exact Hnored_l.
-              ** exact H7.
-              ** trivial.
-           ++ (* black-height existence *)
-              assert (exists kk, black_height (node c (rb_insert_aux x l) v r) = Some kk).
-              {
-                simpl in Hbh.
-                destruct (black_height (rb_insert_aux x l)) eqn:Hl'; destruct (black_height r) eqn:Hr; try (exfalso; discriminate).
-                destruct (Nat.eqb n n0) eqn:Heqbh; try (exfalso; discriminate).
-                apply Nat.eqb_eq in Heqbh; subst.
-                inversion Hbh; subst.
-                exists n0. reflexivity.
-              }
-              destruct H as [kk Hkk].
-              apply balance_preserves_black_height in Hkk.
-              destruct Hkk as [kk' Hkk'].
-              exists kk'. exact Hkk'.
-Qed.
-Admitted. *)
-(* 2) Helper lemmas about ordering preservation when inserting into one side. *)
+
 Lemma smaller_preserved_by_insert_right :
   forall v x r,
     smaller v r ->
@@ -1240,9 +1096,7 @@ Lemma rb_insert_aux_preserves_sorted :
     rb_sorted (rb_insert_aux x t).
 Proof.
   intros x t H. 
-  induction t as  [| c l IHl v r IHr].
-  (*do NOT revert anything here; induction on t and use
-     balance_preserves_sorted for the node-case. *)
+  induction t as  [| c l IHl v r IHr].(*do NOT revert anything here; induction on t and use balance_preserves_sorted for the node-case. *)
   - constructor; eauto.
   - 
     (* inv H. *)
@@ -1250,14 +1104,10 @@ Proof.
     + apply Nat.eqb_eq in Heq; subst; assumption.
     + destruct (v <? x) eqn:Hlt.
       * (* go right *)
-        (* get facts from original sorted node *)
         apply rb_sorted_node_inv in H as [Hgt_v [Hsm_v [Hrb_l Hrb_r]]].
-        (* recurse on right subtree *)
         specialize (IHr Hrb_r).
-        (* show smaller v (rb_insert_aux x r) using helper lemma below *)
         assert (Hsm_v_r' : smaller v (rb_insert_aux x r)).
         { apply smaller_preserved_by_insert_right with (x:=x); eauto. }
-        (* now the unbalanced node is sorted, lift through balance *)
         assert (Hnode_sorted : rb_sorted (node c l v (rb_insert_aux x r))).
         { constructor; assumption. }
         eapply (balance_preserves_sorted (node c l v (rb_insert_aux x r)) Hnode_sorted).
@@ -1297,39 +1147,6 @@ Proof.
       * simpl in H. pose proof (balance_node_never_leaf c (rb_insert_aux x l) v r) as N.
         apply N in H; assumption.
 Qed.
-(* Lemma make_black_fixes_red_red_at_root :
-  forall t,
-    red_red_at_root t ->
-    no_red_red (make_black t).
-Proof.
-  intros t Hrr.
-  destruct t as [| c l v r]; try inversion Hrr.
-  simpl.
-  (* The new root is Black; children unchanged. *)
-  constructor.
-  - (* no red-red on left child *)
-    inversion Hrr; subst; constructor; assumption.
-  - (* no red-red on right child *)
-    inversion Hrr; subst; constructor; assumption.
-Qed.
-
-Lemma make_black_no_change :
-  forall t,
-    ~ red_red_at_root t ->
-    no_red_red t ->
-    no_red_red (make_black t).
-Proof.
-  intros t Hnotrr Hn.
-  destruct t as [| c l v r]; simpl.
-  - (* leaf: trivial *)
-    constructor.
-  - (* node c l v r *)
-    (* Only structural change is the color of the root. *)
-    constructor; try assumption.
-    (* We must show the children obey no_red_red; they already do. *)
-    inversion Hn; subst; assumption.
-Qed.
- *)
 
  (* Lemma rb_insert_aux_preserves_no_red_red :
   forall x t,
@@ -1434,46 +1251,31 @@ Proof.
             right. inversion Hl_root as [a x' b y c' | a x' b y c']; subst; apply rr_left. 
 Qed.
 
+
 Lemma rb_insert_preserves_no_red_red :
   forall x t,
     no_red_red t ->
     no_red_red (rb_insert x t).
- Proof.
+Proof.
   intros x t Hn.
   unfold rb_insert.
-
-  (* First apply the insert_aux lemma *)
-  destruct (rb_insert_aux_preserves_no_red_red x t Hn)
-           as [Hgood | Hrr].
-
-  - (* Case 1: no red-red was created *)
-    (* Then make_black is a no-op *)
-admit.
-  - (* Case 2: red-red was created at the root *)
-    (* make_black repairs it *)
-    admit.
- Admitted.
-  (* intros x t H.
-  unfold rb_insert.
-  remember (rb_insert_aux x t) as t'.
-  destruct t' as [| c l v r].
-  - (* impossible: rb_insert_aux never returns leaf *)
-    exfalso. apply (rb_insert_aux_never_leaf x t). symmetry. assumption.
-  - (* t' = node c l v r *)
-    (* if there is a red-red at the root, make_black fixes it; otherwise make_black is a no-op *)
-    destruct (red_red_at_root (node c l v r)) eqn:HRR.
-    + (* violation at root fixed by make_black *)
-      apply make_black_fixes_red_red_at_root; assumption.
-    + (* no violation produced; recolor is a no-op on no-red-red roots *)
-      now rewrite make_black_no_change.
-   unfold rb_insert.
-   intros.
-   - (* no violation produced *)
-     now rewrite make_black_no_change.
-   - (* violation at root fixed by make_black *)
-     apply make_black_fixes_red_red_at_root; assumption. *)
-
-
+  (* Apply the updated lemma *)
+  destruct (rb_insert_aux_preserves_no_red_red x t Hn) as [Hgood | Hrr].
+  -
+    destruct (rb_insert_aux x t) as [| c l v r] eqn:Haux.
+    + (* impossible case *)
+      exfalso. apply (rb_insert_aux_never_leaf x t). exact Haux.
+    + (* recoloring root to Black preserves no_red_red *)
+      constructor; 
+      inversion Hgood; assumption.
+      
+  - 
+    destruct (rb_insert_aux x t) as [| c l v r] eqn:Haux.
+    + (* impossible case *)
+      exfalso. apply (rb_insert_aux_never_leaf x t). exact Haux.
+    + (* The root must be Red with Red child; making it Black fixes violation *)
+      constructor; eauto; admit.
+Admitted.
  
 Lemma rb_insert_aux_preserves_bh_exists :
   forall x t,
@@ -1481,34 +1283,13 @@ Lemma rb_insert_aux_preserves_bh_exists :
     (exists k, black_height (rb_insert_aux x t) = Some k).
 Proof.
   intros x t [k Hk].
-  (* template: do a separate induction on t. This is the fiddliest; prove a
-     helper lemma that insertion preserves child BHs:
-       rb_insert_aux_preserves_bh_subtree : forall x r kr, black_height r = Some kr -> exists kr', black_height (rb_insert_aux x r) = Some kr'.
-     then combine with balance_preserves_black_height. *)
-   (* induction t; intros x [k Hk]; simpl.
-  - exists 0; reflexivity.
-  - destruct (v =? x).
-    { exists k; assumption. }
-    destruct (v <? x) eqn:Hlt.
-    * specialize (IHt2 x).
-      destruct (IHt2 _) as [k2 H2].
-      { eapply black_height_child_right; eauto. }
-      rewrite H2.
-      exists k; now apply balance_preserves_black_height.
-    * specialize (IHt1 x).
-      destruct (IHt1 _) as [k1 H1].
-      { eapply black_height_child_left; eauto. }
-      rewrite H1.
-      exists k; now apply balance_preserves_black_height. *)
 Admitted.
 
-(* 3) Recombine into the full invariant lemma using the three lemmas.
-   Important: revert only root_black (or whichever single hypothesis you need
-   NOT to be in the IHs) before induction so IHs don't demand root_black on children. *)
 Lemma rb_insert_aux_preserves_invariant :
   forall x t,
     rb_invariant t ->
-    rb_sorted (rb_insert_aux x t) /\ no_red_red (rb_insert_aux x t) /\
+    rb_sorted (rb_insert_aux x t) /\ 
+    (no_red_red (rb_insert_aux x t) \/ red_red_at_root (rb_insert_aux x t)) /\
     exists k, black_height (rb_insert_aux x t) = Some k.
 Proof.
   intros x t Hinv.
@@ -1518,6 +1299,58 @@ Proof.
   - split.
     + apply (rb_insert_aux_preserves_no_red_red x t). exact Hnored.
     + apply (rb_insert_aux_preserves_bh_exists x t). exact Hbh_ex.
+Qed.
+
+Lemma red_red_at_root_children_valid :
+  forall t,
+    red_red_at_root t ->
+    match t with
+    | node Red l v r => no_red_red l /\ no_red_red r
+    | _ => True
+    end.
+Proof.
+  intros t H.
+Admitted.
+
+Theorem rb_insert_correct : forall x t,
+  rb_invariant t ->
+  rb_invariant (rb_insert x t).
+Proof.
+  intros x t [Hsorted [Hnored [k Hbh]]].
+  unfold rb_insert.
+  
+  pose proof (rb_insert_aux_preserves_invariant x t) as Haux.
+  assert (Hinv_full : rb_invariant t).
+  { split; eauto. }
+  specialize (Haux Hinv_full).
+  destruct Haux as [Hsorted_aux [Hnored_or_root Hbh_aux]].
+  
+  destruct (rb_insert_aux x t) as [| c l v r] eqn:E.
+  - (* impossible *)
+    exfalso. apply (rb_insert_aux_never_leaf x t). exact E.
+  - (* rb_insert recolors root to Black *)
+    split.
+    + 
+      apply (recolor_preserves_rb_sorted c l v r Hsorted_aux).
+    + split.
+      * 
+        destruct Hnored_or_root as [Hgood | Hroot_viol].
+        -- 
+           apply (recolor_preserves_no_red_red c l v r Hgood).
+        -- (*Breaks here*)
+           constructor.
+            assert (Hchildren : c = Red /\ no_red_red l /\ no_red_red r).
+            { inversion Hroot_viol; subst; repeat split; eauto. }
+           inversion Hroot_viol; subst. eauto. subst; constructor; assumption.
+      * (* black_height: handle the recoloring effect *)
+        destruct Hbh_aux as [k' Hbh'].
+        destruct c; simpl.
+        -- (* c = Black: no change in black height *)
+           exists k'. exact Hbh'.
+        -- (* c = Red: black height increases by 1 *)
+           exists (k' + 1). 
+           simpl in Hbh'. 
+           exact Hbh'.
 Qed.
 
 
