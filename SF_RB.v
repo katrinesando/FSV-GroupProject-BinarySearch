@@ -15,14 +15,6 @@ Arguments T {V}.
 Definition empty_tree (V : Type) : tree V :=
   E.
 
-Fixpoint lookup {V : Type} (d : V) (x: key) (t : tree V) : V :=
-  match t with
-  | E => d
-  | T _ tl k v tr => if ltb x k then lookup d x tl
-                    else if ltb k x then lookup d x tr
-                         else v
-  end.
-
 Definition balance
            {V : Type} (c : color) (t1 : tree V) (k : key) (vk : V)
            (t2 : tree V) : tree V :=
