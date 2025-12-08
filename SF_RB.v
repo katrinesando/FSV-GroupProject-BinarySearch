@@ -53,15 +53,6 @@ Definition make_black (t : tree) : tree :=
 Definition insert (vx : nat) (t : tree) :=
   make_black (ins vx t).
 
-(* Fixpoint elements_aux (t : tree) (acc : list nat) : list nat :=
-  match t with
-  | E => acc
-  | T _ l k r => elements_aux l (k :: elements_aux r acc)
-  end.
-
-Definition elements (t : tree) : list nat :=
-  elements_aux t [].
- *)
 Lemma ins_not_E : forall (vx : nat) (t : tree),
     ins vx t <> E.
 Proof.
@@ -260,27 +251,43 @@ Inductive NearlyRB : tree -> nat -> Prop :=
     NearlyRB (T Black l v r) (S n).
 
 Ltac prove_RB :=
-  admit.
+unfold balance;
+  repeat match goal with
+  | [ |- context [if (?x <? ?y) then _ else _] ] => 
+      destruct (x <? y)
+
+  | [ H : RB (T Red _ _ _) Red _ |- _ ] => 
+      inversion H
+
+  | [ H : NearlyRB ?t _ |- context [match ?t with _ => _ end] ] => 
+      inv H
+  | [ H : RB ?t _ _ |- context [match ?t with _ => _ end] ] => 
+      inv H
+  | [ |- NearlyRB (T _ _ _ _) _ ] => constructor
+  | [ |- RB _ _ _ ] => constructor
+    | [ H : RB ?t Red _ |- RB ?t Black _ ] => 
+      apply RB_blacken_parent; assumption
+  end;
+  subst; simpl; auto.
+
 Lemma ins_RB : forall (v : nat) (t : tree) (n : nat),
     (RB t Black n -> NearlyRB (ins v t) n) /\
       (RB t Red n -> RB (ins v t) Black n).
 Proof.
-  induction t; split; intros; inv H; repeat constructor; simpl.
-  - (* Instantiate the inductive hypotheses. *)
-    specialize (IHt1 n). specialize (IHt2 n).
-    (* Derive what propositional facts we can from the hypotheses. *)
+ 
+   induction t; split; intros; inv H; simpl.
+  - repeat constructor.
+  - repeat constructor.
+  - specialize (IHt1 n0). specialize (IHt2 n0).
     intuition.
-    (* Get rid of some extraneous hypotheses. *)
-    clear H H1.
-    (* Finish with automation. *)
     prove_RB.
-  - specialize (IHt1 n). specialize (IHt2 n). intuition.
-    clear H0 H2.
+  - specialize (IHt1 n1). specialize (IHt2 n1). 
+    intuition.
     prove_RB.
-  - specialize (IHt1 n). specialize (IHt2 n). intuition.
-    clear H0 H2.
+  - specialize (IHt1 n1). specialize (IHt2 n1). 
+    intuition.
     prove_RB.
-Admitted.
+Qed.
 
 Corollary ins_red : forall (t : tree) (v : nat) (n : nat),
     RB t Red n -> RB (ins v t) Black n.
