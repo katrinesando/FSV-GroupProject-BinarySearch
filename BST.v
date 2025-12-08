@@ -141,8 +141,6 @@ Example insert_nested : insert 2 (insert 5 (insert 10 leaf)) = node (node (node 
 Proof. reflexivity. Qed.
 (* Built tree up from skratch using insert *)
 
-
-
 Lemma smaller_insert : forall n x t,
   smaller n t -> n < x -> smaller n (insert x t).
 Proof.

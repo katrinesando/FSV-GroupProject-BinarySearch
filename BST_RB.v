@@ -1,16 +1,13 @@
-Require Import Coq.Arith.Arith.
-Require Import Coq.Bool.Bool.
 Require Import Coq.Init.Nat.
 Require Import Lia.
 
-Inductive color := Red | Black.
+Inductive color := 
+  | Red 
+  | Black.
 
 Inductive tree  :=
-| leaf : tree
-| node : color -> tree -> nat -> tree -> tree.
-
-Definition empty_tree : tree :=
-  leaf.
+  | leaf : tree
+  | node : color -> tree -> nat -> tree -> tree.
 
 Definition tree1 :=
   node Black 
@@ -74,7 +71,7 @@ Example complex_insert : insert 7 tree_complex =
     (node Black (node Red leaf 7 leaf) 8 (node Red leaf 9 leaf))).
 Proof. unfold tree1. unfold insert. simpl. reflexivity. Qed.
 
-Lemma ins_not_E : forall (vx : nat) (t : tree),
+Lemma ins_not_leaf : forall (vx : nat) (t : tree),
     ins vx t <> leaf.
 Proof.
   intros. destruct t; simpl.
@@ -88,7 +85,6 @@ Proof.
       | |- node _ _ _ _ <> leaf => discriminate
       end.
 Qed.
-
 
 Fixpoint ForallNodes (P: nat -> Prop) (t : tree) : Prop :=
   match t with
@@ -104,14 +100,8 @@ Inductive BST : tree -> Prop :=
     BST l ->
     BST r ->
     BST (node c l k r).
-Lemma empty_tree_BST : forall (V : Type), BST (empty_tree).
 
-Proof.
-  unfold empty_tree. constructor.
-Qed.
-
-
-Lemma ForallT_imp : forall (P Q : nat -> Prop) t,
+Lemma ForallNodes_imp : forall (P Q : nat -> Prop) t,
     ForallNodes P t ->
     (forall k, P k -> Q k) ->
     ForallNodes Q t.
@@ -121,21 +111,21 @@ Proof.
   - destruct H as [? [? ?]]. repeat split; auto.
 Qed.
 
-Lemma ForallT_greater : forall (t : tree) (k k0 : nat),
+Lemma ForallNodes_greater : forall (t : tree) (k k0 : nat),
     ForallNodes (fun k' => k' > k) t ->
     k > k0 ->
     ForallNodes (fun k' => k' > k0) t.
 Proof.
-  intros. eapply ForallT_imp; eauto.
+  intros. eapply ForallNodes_imp; eauto.
   intros. simpl in H1. lia.
 Qed.
 
-Lemma ForallT_less : forall (t : tree) (k k0 : nat),
+Lemma ForallNodes_less : forall (t : tree) (k k0 : nat),
     ForallNodes (fun k' => k' < k) t ->
     k < k0 ->
     ForallNodes (fun k' => k' < k0) t.
 Proof.
-  intros; eapply ForallT_imp; eauto.
+  intros; eapply ForallNodes_imp; eauto.
   intros. simpl in H1. lia.
 Qed.
 
@@ -143,8 +133,8 @@ Ltac inv H := inversion H; subst; clear H.
 
 Lemma balance_BST: forall (c : color) (l : tree)
                      (v : nat) (r : tree),
-    ForallNodes (fun k' => ( k') < ( v)) l ->
-    ForallNodes (fun k' => ( k') > ( v)) r ->
+    ForallNodes (fun k' => k' < v) l ->
+    ForallNodes (fun k' => k' > v) r ->
     BST l ->
     BST r ->
     BST (balance c l v r).
@@ -160,7 +150,7 @@ Proof.
     | |- ForallNodes _ (node _ _ _ _) => repeat split
     end;
     auto; try lia.
-  all: try eapply ForallT_greater; try eapply ForallT_less; eauto; try lia.
+  all: try eapply ForallNodes_greater; try eapply ForallNodes_less; eauto; try lia.
 Qed.
 
 Lemma balanceP : forall (P : nat -> Prop) (c : color) (l r : tree)
@@ -173,17 +163,9 @@ Proof.
   intros.
   unfold balance.
   repeat match goal with
-
-(* If we know P holds for a node, it holds for the key and subtrees. *)
   | H: ForallNodes _ (node _ _ _ _) |- _ => destruct H as [? [? ?]]
-  
-  
-(*  Destruct the variables being matched on inside 'balance'. *)
   | |- ForallNodes _ (match ?c with Red => _ | Black => _ end) => destruct c
   | |- ForallNodes _ (match ?t with leaf => _ | node _ _ _ _ => _ end) => destruct t
-  
-  (* 3. Solve the Goal: 
-        The result is always a node node. Split the ForallNodes goal into its 3 parts. *)
   | |- ForallNodes _ (node _ _ _ _) => repeat split
   end;
   auto.
@@ -276,10 +258,8 @@ unfold balance;
   repeat match goal with
   | [ |- context [if (?x <? ?y) then _ else _] ] => 
       destruct (x <? y)
-
   | [ H : RB (node Red _ _ _) Red _ |- _ ] => 
       inversion H
-
   | [ H : NearlyRB ?t _ |- context [match ?t with _ => _ end] ] => 
       inv H
   | [ H : RB ?t _ _ |- context [match ?t with _ => _ end] ] => 
@@ -336,4 +316,26 @@ Proof.
   unfold insert.
   apply ins_red with (v := v) in H.
   apply RB_blacken_root with n; assumption.
+Qed.
+
+Definition validRBTree (t : tree) : Prop :=
+  BST t /\ (exists n, RB t Red n).
+
+Theorem insert_is_valid : forall (t : tree) (v : nat),
+    validRBTree t ->
+    validRBTree (insert v t).
+Proof.
+  intros t v H.
+  unfold validRBTree in *.
+  destruct H as [H_bst H_rb].
+  destruct H_rb as [n H_rb_prop].
+
+  split.
+  - apply insert_BST.
+    assumption.
+
+  - pose proof (insert_RB t v n H_rb_prop) as H_result.
+    destruct H_result as [n' H_new_rb].
+    exists n'.
+    assumption.
 Qed.
