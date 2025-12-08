@@ -3,58 +3,79 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.Init.Nat.
 Require Import Lia.
 
-
-
-Definition key := nat.
 Inductive color := Red | Black.
 
 Inductive tree  :=
-| E : tree
-| T : color -> tree -> nat -> tree -> tree.
+| leaf : tree
+| node : color -> tree -> nat -> tree -> tree.
 
 Definition empty_tree : tree :=
-  E.
+  leaf.
 
-(*   Arguments E {V}.
-Arguments T {V}. *)
+Definition tree1 :=
+  node Black 
+  (node Red leaf 5 leaf) 
+  10 
+  (node Red leaf 15 leaf).
+Definition tree_complex :=
+  node Black (node Red (node Black leaf 1 leaf) 2 (node Black leaf 3 leaf))
+  4
+  (node Red (node Black leaf 5 leaf) 
+    6 
+    (node Black leaf 8 (node Red leaf 9 leaf))).
 
 Definition balance (c : color) (t1 : tree) (k : nat) (t2 : tree) : tree :=
   match c with
-  | Red => T Red t1 k t2
+  | Red => node Red t1 k t2
   | Black => 
       match t1 with
-      | T Red (T Red a x b) y c =>
-          T Red (T Black a x b) y (T Black c k t2)
-      | T Red a x (T Red b y c) =>
-          T Red (T Black a x b) y (T Black c k t2)
+      | node Red (node Red a x b) y c =>
+          node Red (node Black a x b) y (node Black c k t2)
+      | node Red a x (node Red b y c) =>
+          node Red (node Black a x b) y (node Black c k t2)
       | _ => 
           match t2 with
-          | T Red (T Red b y c) z d =>
-              T Red (T Black t1 k b) y (T Black c z d)
-          | T Red b y (T Red c z d) =>
-              T Red (T Black t1 k b) y (T Black c z d)
-          | _ => T Black t1 k t2
+          | node Red (node Red b y c) z d =>
+              node Red (node Black t1 k b) y (node Black c z d)
+          | node Red b y (node Red c z d) =>
+              node Red (node Black t1 k b) y (node Black c z d)
+          | _ => node Black t1 k t2
           end
       end
   end.
 Fixpoint ins (x : nat) (t : tree) : tree :=
   match t with
-  | E => T Red E x E
-  | T c a y b => 
+  | leaf => node Red leaf x leaf
+  | node c a y b => 
       if ltb x y then balance c (ins x a) y b
       else if ltb y x then balance c a y (ins x b)
-      else T c a x b
+      else node c a x b
   end.
+
 Definition make_black (t : tree) : tree :=
   match t with
-  | E => E
-  | T _ a vx b => T Black a vx b
+  | leaf => leaf
+  | node _ a vx b => node Black a vx b
   end.
 Definition insert (vx : nat) (t : tree) :=
   make_black (ins vx t).
 
+Example simple_insert : insert 2 tree1 =
+  node Black (node Black leaf 2 leaf) 
+  5
+  (node Black leaf 10 (node Red leaf 15 leaf)).
+Proof. unfold tree1. unfold insert. simpl. reflexivity. Qed.
+
+Example complex_insert : insert 7 tree_complex =
+  node Black (node Red (node Black leaf 1 leaf) 2 (node Black leaf 3 leaf))
+  4
+  (node Red (node Black leaf 5 leaf) 
+    6 
+    (node Black (node Red leaf 7 leaf) 8 (node Red leaf 9 leaf))).
+Proof. unfold tree1. unfold insert. simpl. reflexivity. Qed.
+
 Lemma ins_not_E : forall (vx : nat) (t : tree),
-    ins vx t <> E.
+    ins vx t <> leaf.
 Proof.
   intros. destruct t; simpl.
   - discriminate.
@@ -63,26 +84,26 @@ Proof.
       match goal with
       | |- (if ?x then _ else _) <> _ => destruct x
       | |- match ?c with Red => _ | Black => _ end <> _ => destruct c
-      | |- match ?t with E => _ | T _ _ _ _ => _ end <> _ => destruct t
-      | |- T _ _ _ _ <> E => discriminate
+      | |- match ?t with leaf => _ | node _ _ _ _ => _ end <> _ => destruct t
+      | |- node _ _ _ _ <> leaf => discriminate
       end.
 Qed.
 
 
-Fixpoint ForallT (P: nat -> Prop) (t : tree) : Prop :=
+Fixpoint ForallNodes (P: nat -> Prop) (t : tree) : Prop :=
   match t with
-  | E => True
-  | T c l k r => P k /\ ForallT P l /\ ForallT P r
+  | leaf => True
+  | node c l k r => P k /\ ForallNodes P l /\ ForallNodes P r
   end.
 
 Inductive BST : tree -> Prop :=
-| ST_E : BST E
+| ST_E : BST leaf
 | ST_T : forall (c : color) (l : tree) (k : nat) (r : tree),
-    ForallT (fun k' => k' < k) l ->
-    ForallT (fun k' => k' > k) r ->
+    ForallNodes (fun k' => k' < k) l ->
+    ForallNodes (fun k' => k' > k) r ->
     BST l ->
     BST r ->
-    BST (T c l k r).
+    BST (node c l k r).
 Lemma empty_tree_BST : forall (V : Type), BST (empty_tree).
 
 Proof.
@@ -91,9 +112,9 @@ Qed.
 
 
 Lemma ForallT_imp : forall (P Q : nat -> Prop) t,
-    ForallT P t ->
+    ForallNodes P t ->
     (forall k, P k -> Q k) ->
-    ForallT Q t.
+    ForallNodes Q t.
 Proof.
   induction t; intros.
   - auto.
@@ -101,18 +122,18 @@ Proof.
 Qed.
 
 Lemma ForallT_greater : forall (t : tree) (k k0 : nat),
-    ForallT (fun k' => k' > k) t ->
+    ForallNodes (fun k' => k' > k) t ->
     k > k0 ->
-    ForallT (fun k' => k' > k0) t.
+    ForallNodes (fun k' => k' > k0) t.
 Proof.
   intros. eapply ForallT_imp; eauto.
   intros. simpl in H1. lia.
 Qed.
 
 Lemma ForallT_less : forall (t : tree) (k k0 : nat),
-    ForallT (fun k' => k' < k) t ->
+    ForallNodes (fun k' => k' < k) t ->
     k < k0 ->
-    ForallT (fun k' => k' < k0) t.
+    ForallNodes (fun k' => k' < k0) t.
 Proof.
   intros; eapply ForallT_imp; eauto.
   intros. simpl in H1. lia.
@@ -122,8 +143,8 @@ Ltac inv H := inversion H; subst; clear H.
 
 Lemma balance_BST: forall (c : color) (l : tree)
                      (v : nat) (r : tree),
-    ForallT (fun k' => ( k') < ( v)) l ->
-    ForallT (fun k' => ( k') > ( v)) r ->
+    ForallNodes (fun k' => ( k') < ( v)) l ->
+    ForallNodes (fun k' => ( k') > ( v)) r ->
     BST l ->
     BST r ->
     BST (balance c l v r).
@@ -131,12 +152,12 @@ Proof.
   intros. unfold balance.
   repeat
     match goal with
-    | H: ForallT _ (T _ _ _ _) |- _ => destruct H as [? [? ?] ]
-    | H: BST (T _ _ _ _) |- _ => inv H
+    | H: ForallNodes _ (node _ _ _ _) |- _ => destruct H as [? [? ?] ]
+    | H: BST (node _ _ _ _) |- _ => inv H
     | |- BST (match ?c with Red => _ | Black => _ end) => destruct c
-    | |- BST (match ?t with E => _ | T _ _ _ _ => _ end) => destruct t
-    | |- BST (T _ _ _ _) => constructor
-    | |- ForallT _ (T _ _ _ _) => repeat split
+    | |- BST (match ?t with leaf => _ | node _ _ _ _ => _ end) => destruct t
+    | |- BST (node _ _ _ _) => constructor
+    | |- ForallNodes _ (node _ _ _ _) => repeat split
     end;
     auto; try lia.
   all: try eapply ForallT_greater; try eapply ForallT_less; eauto; try lia.
@@ -144,35 +165,35 @@ Qed.
 
 Lemma balanceP : forall (P : nat -> Prop) (c : color) (l r : tree)
                         (v : nat),
-    ForallT P l ->
-    ForallT P r ->
+    ForallNodes P l ->
+    ForallNodes P r ->
     P v ->
-    ForallT P (balance c l v r).
+    ForallNodes P (balance c l v r).
 Proof.
   intros.
   unfold balance.
   repeat match goal with
 
 (* If we know P holds for a node, it holds for the key and subtrees. *)
-  | H: ForallT _ (T _ _ _ _) |- _ => destruct H as [? [? ?]]
+  | H: ForallNodes _ (node _ _ _ _) |- _ => destruct H as [? [? ?]]
   
   
 (*  Destruct the variables being matched on inside 'balance'. *)
-  | |- ForallT _ (match ?c with Red => _ | Black => _ end) => destruct c
-  | |- ForallT _ (match ?t with E => _ | T _ _ _ _ => _ end) => destruct t
+  | |- ForallNodes _ (match ?c with Red => _ | Black => _ end) => destruct c
+  | |- ForallNodes _ (match ?t with leaf => _ | node _ _ _ _ => _ end) => destruct t
   
   (* 3. Solve the Goal: 
-        The result is always a T node. Split the ForallT goal into its 3 parts. *)
-  | |- ForallT _ (T _ _ _ _) => repeat split
+        The result is always a node node. Split the ForallNodes goal into its 3 parts. *)
+  | |- ForallNodes _ (node _ _ _ _) => repeat split
   end;
   auto.
 Qed.
 
 
 Lemma insP : forall (P : nat -> Prop) (t : tree) (v : nat),
-    ForallT P t ->
+    ForallNodes P t ->
     P v ->
-    ForallT P (ins v t).
+    ForallNodes P (ins v t).
 Proof.
   induction t; intros.
   - repeat split; assumption.
@@ -223,15 +244,15 @@ Proof.
 Qed.
 
 Inductive RB : tree -> color -> nat -> Prop :=
-| RB_leaf: forall (c : color), RB E c 0
+| RB_leaf: forall (c : color), RB leaf c 0
 | RB_r: forall (l r : tree) (k : nat) (n : nat),
     RB l Red n ->
     RB r Red n ->
-    RB (T Red l k r) Black n
+    RB (node Red l k r) Black n
 | RB_b: forall (c : color) (l r : tree) (k : nat) (n : nat),
     RB l Black n ->
     RB r Black n ->
-    RB (T Black l k r) c (S n).
+    RB (node Black l k r) c (S n).
 
 Lemma RB_blacken_parent : forall (t : tree) (n : nat),
     RB t Red n -> RB t Black n.
@@ -244,11 +265,11 @@ Inductive NearlyRB : tree -> nat -> Prop :=
 | NearlyRB_r : forall (l r : tree) (v : nat) (n : nat),
     RB l Black n ->
     RB r Black n ->
-    NearlyRB (T Red l v r) n
+    NearlyRB (node Red l v r) n
 | NearlyRB_b : forall (l r : tree) (v : nat) (n : nat),
     RB l Black n ->
     RB r Black n ->
-    NearlyRB (T Black l v r) (S n).
+    NearlyRB (node Black l v r) (S n).
 
 Ltac prove_RB :=
 unfold balance;
@@ -256,14 +277,14 @@ unfold balance;
   | [ |- context [if (?x <? ?y) then _ else _] ] => 
       destruct (x <? y)
 
-  | [ H : RB (T Red _ _ _) Red _ |- _ ] => 
+  | [ H : RB (node Red _ _ _) Red _ |- _ ] => 
       inversion H
 
   | [ H : NearlyRB ?t _ |- context [match ?t with _ => _ end] ] => 
       inv H
   | [ H : RB ?t _ _ |- context [match ?t with _ => _ end] ] => 
       inv H
-  | [ |- NearlyRB (T _ _ _ _) _ ] => constructor
+  | [ |- NearlyRB (node _ _ _ _) _ ] => constructor
   | [ |- RB _ _ _ ] => constructor
     | [ H : RB ?t Red _ |- RB ?t Black _ ] => 
       apply RB_blacken_parent; assumption
@@ -315,5 +336,4 @@ Proof.
   unfold insert.
   apply ins_red with (v := v) in H.
   apply RB_blacken_root with n; assumption.
-Qed. 
-
+Qed.
