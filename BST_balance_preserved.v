@@ -760,10 +760,275 @@ Proof.
         repeat(constructor); eauto.
 Qed.
 
+
+Ltac solve_bh_from_hyp :=
+  match goal with
+  | [ H : _ |- _ ] =>
+    let Ht := fresh "Hbh" in
+    (* Work on a local copy so we can clear it after inversion *)
+    pose proof H as Ht;
+    simpl in Ht;
+    (* remember and destruct any nested black_height calls *)
+    repeat match type of Ht with
+    | context[black_height ?t] =>
+        let He := fresh "He" in
+        remember (black_height t) as He eqn:He;
+        destruct (black_height t) eqn:He; [ clear He | discriminate Ht ]
+    end;
+    (* destruct Nat.eqb occurrences, turning true branches into equalities *)
+    repeat match type of Ht with
+    | context[Nat.eqb ?a ?b] =>
+        let E := fresh "E" in
+        destruct (Nat.eqb a b) eqn:E;
+        [ apply Nat.eqb_eq in E; subst a | discriminate Ht ]
+    end;
+    (* now Ht must be of shape Some _ = Some _; invert it to get numeric equalities *)
+    inversion Ht; clear Ht; try subst
+  end.
+
+(* usage: `solve_bh_from_hyp.` after you have `H1` (or whichever hyp) in context,
+   then `simpl; reflexivity.` to close the goal. *)
+
+Ltac invert_bh H :=
+  simpl in H;
+  (* 1. Handle the nested match black_heights *)
+  repeat match type of H with
+  | context[match black_height ?t with _ => _ end] =>
+      destruct (black_height t) eqn:?; try discriminate
+  end;
+  (* 2. Handle the boolean equality checks *)
+  repeat match type of H with
+  | context[if Nat.eqb ?n ?m then _ else _] =>
+      (* Generate a unique name "Heq" to avoid conflicts in the loop *)
+      let Heq := fresh "Heq" in
+      (* Destruct using that specific name *)
+      destruct (Nat.eqb n m) eqn:Heq; 
+      [ 
+        (* Now we can apply specifically to Heq *)
+        apply Nat.eqb_eq in Heq; 
+        subst 
+      | 
+        (* The false case *)
+        discriminate 
+      ]
+  end;
+  (* 3. Final cleanup *)
+  inversion H; subst; clear H.
+
+
+Ltac solve_balance_bh :=
+  repeat match goal with
+    (* Solve impossible constructor equalities *)
+    | [ |- None = Some _ ] => 
+        exfalso; try congruence; try lia
+    | [ |- Some _ = None ] => 
+        exfalso; try congruence; try lia
+
+    (* Merge conflicting black_height hypotheses *)
+    | [ H1: black_height ?t = Some ?v1, H2: black_height ?t = Some ?v2 |- _ ] => 
+        assert (v1 = v2) by (rewrite H1 in H2; injection H2; auto);
+        subst; 
+        clear H2
+
+    | [H: black_height _ = Some _ |- _] => 
+        invert_bh H; simpl
+    | [ H: Some _ = Some _ |- _ ] => 
+        injection H as H; try subst
+    | [ H: ?x = ?y |- _ ] => 
+        first [ 
+            discriminate H 
+          | is_var x; subst x 
+          | is_var y; subst y 
+        ]
+
+    (* Destruct stuck boolean checks (Goal) *)
+    | [ |- context [ if ?n =? ?m then _ else _ ] ] => 
+        destruct (Nat.eqb_spec n m); simpl
+
+    (* Destruct stuck Nat matches (Goal) *)
+    | [ |- context [ match ?n with | 0 => _ | S _ => _ end ] ] => 
+        is_var n; destruct n; simpl
+
+    (* Destruct stuck Colors/Variables *)
+    | [ |- context [ match ?c with | Red => _ | Black => _ end ] ] => 
+        is_var c; 
+        destruct c; 
+        simpl in *
+
+    (* 9. Destruct stuck Boolean checks inside Hypotheses *)
+    | [ H: context [ match (if ?n =? ?m then _ else _) with _ => _ end ] |- _ ] => 
+        destruct (Nat.eqb_spec n m); simpl in H
+
+    (* Arithmetic Simplification *)
+    | [ |- context [ color_eqb _ ] ] => unfold color_eqb      
+    | [ |- context [ ?n =? ?n ] ] => rewrite Nat.eqb_refl
+    | [ |- context [ _ + 1 ] ] => rewrite Nat.add_1_r; simpl
+    | [ H: context [ _ + 1] |- _] => rewrite Nat.add_1_r in H; simpl in H
+    | [ |- context [ _ + 0 ] ] => rewrite Nat.add_0_r
+    | [ H: context [ _ + 0 ] |- _ ] => rewrite Nat.add_0_r in H
+
+    (* Final Solvers *)
+    | [ |- black_height _ = _ ] => simpl
+    | [ Heqon: black_height _ = Some _ |- _] => rewrite Heqon
+    | [ |- _ = _ ] => reflexivity
+    | [ |- _ ] => assumption
+  end.
+
+
 Lemma balance_preserves_bh :
   forall t k, black_height t = Some k -> black_height (balance t) = Some k.
-Admitted.
+Proof.
+  intros [|c l v r] k H; simpl; [assumption|].
+  destruct c; [| simpl in *; assumption].
+  destruct l as [|lc ll lv lr]; destruct r as [|rc rl rv rr].
+  - assumption.
+  - destruct rc; [assumption|].
+    destruct rl as [| rlc rll rlv rlr]; destruct rr as [| rrc rrl rrv rrr]; try (simpl; assumption).
+    + destruct rrc; try assumption. invert_bh H; simpl; rewrite H1; simpl. rewrite Heqo; rewrite Heqo0.
+      rewrite Nat.eqb_refl.  replace (n0 + 0) with n0 in H1 by lia. destruct n0 eqn:Hn0.
+      * injection H1; intros; subst. simpl. reflexivity.
+      * inversion H1.
+    + destruct rlc; try assumption. invert_bh H; simpl; rewrite H1; simpl. rewrite Heqo; rewrite Heqo0.
+      replace (n0 + 0 + 0) with n0 in H1 by lia. destruct n0 eqn:Hn0.
+      * rewrite Nat.eqb_refl. simpl. assumption.
+      * inversion H1.
+    + destruct rlc; destruct rrc; try assumption.
+      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
+        replace (n0 + 1 + 0) with (n0 + 1) in H1 by lia. Search(_+1). rewrite Nat.add_1_r in H1. inversion H1.
+      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
+        replace (n0 + 0 + 0) with (n0 + 0) in H1 by lia. rewrite Heq in H1. rewrite Nat.add_1_r in H1. inversion H1.
+      * invert_bh H; simpl. rewrite H1. rewrite Heqo. rewrite Heqo0. rewrite Heqo1. rewrite Heqo2. rewrite Nat.eqb_refl.
+        replace (n0 + 0 + 0) with (n0) in H1 by lia. destruct n0 eqn:Hn0.
+        -- rewrite <- Heq. simpl. assumption.
+        -- assumption.
+  - destruct lc; [assumption|].
+    destruct ll as [| llc lll llv llr]; destruct lr as [|lrc lrl lrv lrr]; try (simpl; assumption).
+    + destruct lrc; try assumption. invert_bh H; simpl. rewrite H1. rewrite Heqo; rewrite Heqo0.
+      replace (n0 + 0) with n0 in H1 by lia. destruct n0.
+      * simpl in *. assumption.
+      * assumption.
+    + destruct llc; try assumption. invert_bh H; simpl. rewrite Heqo. rewrite Heqo0. 
+      replace (n0 + 0) with n0 in Heq by lia. rewrite Heq. simpl in *. reflexivity.
 
+    + destruct llc; destruct lrc; try assumption.
+      * invert_bh H; simpl. lia.
+      * invert_bh H; simpl. lia. 
+      * invert_bh H; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2. repeat rewrite Nat.eqb_refl.
+        assert (n2 = 0) by lia. rewrite H. rewrite Nat.eqb_refl. assert (n0 = 0) by lia. rewrite H0. simpl. reflexivity. 
+  - destruct lc; destruct rc; try assumption.
+    + destruct rl as [| rlc rll rlv rlr]; destruct rr as [| rrc rrl rrv rrr]; try assumption.
+      * destruct rrc; try assumption. invert_bh H; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2.
+        repeat rewrite Nat.eqb_refl. rewrite H1. rewrite Nat.add_1_r. simpl. destruct (n2+0).
+        -- rewrite Nat.add_1_r in H1. simpl in H1. assumption.
+        -- assumption.
+      * destruct rlc; try assumption. invert_bh H; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2. 
+        replace (n0+1) with n2 by lia. replace (n2) with 0 by lia.  repeat rewrite Nat.eqb_refl. reflexivity.
+      
+      * destruct rlc; destruct rrc; try assumption.
+        -- invert_bh H; simpl; rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4.
+           replace (n0 + 1) with (n2 + 1) by lia. 
+           repeat rewrite Nat.eqb_refl.
+           replace (n2 + 1 + 1) with (n4 + 1) by lia. 
+           rewrite Nat.eqb_refl. auto.
+        -- invert_bh H; simpl; rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4.
+           replace (n0 + 1) with (n2 ) by lia. 
+           repeat rewrite Nat.eqb_refl.
+           replace (n2) with (n4 + 1) by lia. 
+           repeat rewrite Nat.eqb_refl. auto. 
+        -- invert_bh H; simpl; rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4.
+           replace (n0 + 1) with (n2 ) by lia. 
+           repeat rewrite Nat.eqb_refl.
+           replace (n2) with (n4 + 0) by lia. 
+           repeat rewrite Nat.eqb_refl. auto.      
+    + destruct ll as [| llc lll llv llr]; destruct lr as [| lrc lrl lrv lrr]; try assumption.
+      * destruct lrc; try assumption. invert_bh H; simpl; rewrite H1.
+        -- rewrite Heqo, Heqo0, Heqo1, Heqo2. destruct n0 eqn:Hn0; destruct (n1 =? n2) eqn:Heq; try assumption.
+           rewrite Nat.add_1_r. simpl in *. rewrite Nat.add_1_r in H1. assumption.
+        -- rewrite Heqo, Heqo0, Heqo1, Heqo2. destruct n0; try assumption.
+        -- rewrite Heqo, Heqo0, Heqo1. destruct n0; try assumption.
+    
+      * invert_bh H; simpl. destruct llc; simpl; try assumption.
+        -- unfold color_eqb in Heq. rewrite Nat.add_1_r in Heq. inversion Heq. 
+        -- unfold color_eqb in Heq0, Heq. lia.
+      
+      * destruct llc; try assumption; invert_bh H; simpl.
+        -- destruct lrc; try assumption; simpl. rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4;
+           repeat rewrite Nat.eqb_refl.
+           --- unfold color_eqb in Heq. rewrite Heq. rewrite Nat.eqb_refl. replace (n2+1+0) with (n4+1) by lia.
+               rewrite Nat.eqb_refl. reflexivity.
+           --- simpl in *. replace (n0+1) with n2 by lia. rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4. repeat rewrite Nat.eqb_refl. replace n2 with (n4+1) by lia.
+               repeat rewrite Nat.eqb_refl. rewrite Nat.add_0_r. replace (n0+1) with (n4+1) by lia. repeat rewrite Nat.eqb_refl. auto.
+        -- rewrite Heqo, Heqo0, Heqo1, Heqo2, Heqo3, Heqo4. repeat rewrite Nat.eqb_refl. destruct (color_eqb lrc).
+           --- replace (n2 + 0) with (n4 + 1) by lia. rewrite Nat.eqb_refl. replace (n0+1) with (n4+1+1) by lia.
+               rewrite Nat.eqb_refl. replace (n4+1+1+0) with (n0+0+0+1) by lia. reflexivity.
+           --- replace (n2 + S n) with (n4+1) by lia. rewrite Nat.eqb_refl. replace (n0+1) with (n4+1+1) by lia. rewrite Nat.eqb_refl.
+               replace (n4+1+1+0) with (n0+0+0+1) by lia. reflexivity.     
+    + destruct ll; destruct lr; destruct rl; destruct rr; try assumption; simpl;
+    
+    repeat match goal with
+
+      (* Solve impossible constructor equalities*)
+      | [ |- None = Some _ ] => 
+          exfalso; try congruence; try lia
+      | [ |- Some _ = None ] => 
+          exfalso; try congruence; try lia
+
+      (* Merge conflicting black_height hypotheses *)
+      | [ H1: black_height ?t = Some ?v1, H2: black_height ?t = Some ?v2 |- _ ] => 
+          assert (v1 = v2) by (rewrite H1 in H2; injection H2; auto);
+          subst; 
+          clear H2
+
+      (* Invert domain-specific hypotheses *)
+      | [H: black_height _ = Some k |- _] => 
+          invert_bh H; simpl
+
+      (* Inject/Subst simple equalities *)
+      | [ H: Some _ = Some _ |- _ ] => 
+          injection H as H; try subst
+      | [ H: ?x = ?y |- _ ] => 
+          first [ 
+              discriminate H 
+            | is_var x; subst x 
+            | is_var y; subst y 
+          ]
+
+      (* Destruct stuck boolean checks (Goal) *)
+      | [ |- context [ if ?n =? ?m then _ else _ ] ] => 
+          destruct (Nat.eqb_spec n m); simpl
+
+      (* Destruct stuck Nat matches (Goal) *)
+      | [ |- context [ match ?n with | 0 => _ | S _ => _ end ] ] => 
+          is_var n; destruct n; simpl
+
+      (* Destruct stuck Colors/Variables *)
+      | [ |- context [ match ?c with | Red => _ | Black => _ end ] ] => 
+          is_var c; 
+          destruct c; 
+          simpl in *
+
+      (* Destruct stuck Boolean checks inside Hypotheses *)
+      | [ H: context [ match (if ?n =? ?m then _ else _) with _ => _ end ] |- _ ] => 
+          destruct (Nat.eqb_spec n m); simpl in H
+
+      (* Arithmetic Simplification *)
+      | [ |- context [ color_eqb _ ] ] => unfold color_eqb      
+      | [ |- context [ ?n =? ?n ] ] => rewrite Nat.eqb_refl
+      | [ |- context [ _ + 1 ] ] => rewrite Nat.add_1_r; simpl
+      | [ H: context [ _ + 1] |- _] => rewrite Nat.add_1_r in H; simpl in H
+      | [ |- context [ _ + 0 ] ] => rewrite Nat.add_0_r
+      | [ H: context [ _ + 0 ] |- _ ] => rewrite Nat.add_0_r in H
+
+      (*  Final Solvers *)
+      | [ |- black_height _ = _ ] => simpl
+      | [ Heqon: black_height _ = Some _ |- _] => rewrite Heqon
+      | [ |- _ = _ ] => reflexivity
+      | [ |- _ ] => assumption
+    end.
+    
+Qed.
+    
+    
 Lemma rb_insert_aux_preserves_invariant :
   forall x t,
     rb_invariant t ->

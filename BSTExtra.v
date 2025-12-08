@@ -4,7 +4,6 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.Arith.
 Require Import Lia.
 Require Import Coq.Sorting.Sorted.
-Require Import Coq.Sorting.Permutation.
 Transparent BST.insert.
 
 (* bst to list *)
@@ -14,8 +13,8 @@ Fixpoint bst_to_list (bst: tree) : list nat :=
   | node l v r => [v] ++ bst_to_list l ++ bst_to_list r
 end.
 
-(* Definition list_to_bst (lst: list nat) : tree :=
-  fold_left(fun acc elem => insert elem acc) lst leaf. *)
+Definition list_to_bst (lst: list nat) : tree :=
+  fold_right(fun elem acc => insert elem acc) leaf lst.
 
 Fixpoint list_to_bst (l : list nat) : tree :=
   match l with
