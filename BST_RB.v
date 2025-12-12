@@ -1,4 +1,5 @@
 Require Import Coq.Init.Nat.
+Require Import Coq.Arith.Arith.
 Require Import Lia.
 
 Inductive color := 
