@@ -93,14 +93,14 @@ Fixpoint ForallNodes (P: nat -> Prop) (t : tree) : Prop :=
   | node c l k r => P k /\ ForallNodes P l /\ ForallNodes P r
   end.
 
-Inductive BST : tree -> Prop :=
-| ST_E : BST leaf
+Inductive sorted : tree -> Prop :=
+| ST_E : sorted leaf
 | ST_T : forall (c : color) (l : tree) (k : nat) (r : tree),
     ForallNodes (fun k' => k' < k) l ->
     ForallNodes (fun k' => k' > k) r ->
-    BST l ->
-    BST r ->
-    BST (node c l k r).
+    sorted l ->
+    sorted r ->
+    sorted (node c l k r).
 
 Lemma ForallNodes_imp : forall (P Q : nat -> Prop) t,
     ForallNodes P t ->
@@ -136,18 +136,18 @@ Lemma balance_BST: forall (c : color) (l : tree)
                      (v : nat) (r : tree),
     ForallNodes (fun k' => k' < v) l ->
     ForallNodes (fun k' => k' > v) r ->
-    BST l ->
-    BST r ->
-    BST (balance c l v r).
+    sorted l ->
+    sorted r ->
+    sorted (balance c l v r).
 Proof.
   intros. unfold balance.
   repeat
     match goal with
     | H: ForallNodes _ (node _ _ _ _) |- _ => destruct H as [? [? ?] ]
-    | H: BST (node _ _ _ _) |- _ => inv H
-    | |- BST (match ?c with Red => _ | Black => _ end) => destruct c
-    | |- BST (match ?t with leaf => _ | node _ _ _ _ => _ end) => destruct t
-    | |- BST (node _ _ _ _) => constructor
+    | H: sorted (node _ _ _ _) |- _ => inv H
+    | |- sorted (match ?c with Red => _ | Black => _ end) => destruct c
+    | |- sorted (match ?t with leaf => _ | node _ _ _ _ => _ end) => destruct t
+    | |- sorted (node _ _ _ _) => constructor
     | |- ForallNodes _ (node _ _ _ _) => repeat split
     end;
     auto; try lia.
@@ -189,8 +189,8 @@ Proof.
 Qed.
 
 Lemma ins_BST : forall (t : tree) (v : nat),
-    BST t ->
-    BST (ins v t).
+    sorted t ->
+    sorted (ins v t).
 Proof.
   induction t; intros.
   - simpl. constructor; try assumption; split.
@@ -215,8 +215,8 @@ Qed.
          
        
 Theorem insert_BST : forall (t : tree) (v : nat),
-    BST t ->
-    BST (insert v t).
+    sorted t ->
+    sorted (insert v t).
 Proof.
   intros.
   unfold insert.
@@ -320,7 +320,7 @@ Proof.
 Qed.
 
 Definition validRBTree (t : tree) : Prop :=
-  BST t /\ (exists n, RB t Red n).
+  sorted t /\ (exists n, RB t Red n).
 
 Theorem insert_is_valid : forall (t : tree) (v : nat),
     validRBTree t ->
