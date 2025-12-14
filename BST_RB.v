@@ -132,7 +132,7 @@ Qed.
 
 Ltac inv H := inversion H; subst; clear H.
 
-Lemma balance_BST: forall (c : color) (l : tree)
+Lemma balance_sorted: forall (c : color) (l : tree)
                      (v : nat) (r : tree),
     ForallNodes (fun k' => k' < v) l ->
     ForallNodes (fun k' => k' > v) r ->
@@ -195,13 +195,13 @@ Proof.
   induction t; intros.
   - simpl. constructor; try assumption; split.
   - inversion H; subst. simpl. destruct (v <? n) eqn:Hlt.
-    + apply balance_BST.
+    + apply balance_sorted.
       * apply insP; rewrite Nat.ltb_lt in Hlt; assumption.
       * assumption.
       * apply IHt1; assumption.
       * assumption.
     + destruct (n <? v) eqn:Hgt.
-      * apply balance_BST; try assumption.
+      * apply balance_sorted; try assumption.
         -- apply insP; rewrite Nat.ltb_lt in Hgt; assumption.
         -- apply IHt2; assumption.
       * constructor; auto.
