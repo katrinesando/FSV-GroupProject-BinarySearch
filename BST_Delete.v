@@ -177,8 +177,8 @@ Proof.
         simpl in Hsucc. rewrite Hsucc. constructor; eauto.
       * (* no successor: impossible *)
         destruct t2_1; simpl; simpl in *; eauto.
-        ++ destruct t2_1_1; eauto.
-           simpl in *. rewrite Hsucc. eauto.
+        destruct t2_1_1; eauto.
+        simpl in *. rewrite Hsucc. eauto.
     + destruct (x <? n0) eqn:Hlt; eauto.
 Qed.
 
@@ -203,7 +203,7 @@ Proof.
         destruct t2_1_1; eauto.
         simpl in *. rewrite Hsucc. eauto.
   - (* not deleting root *)
-      destruct (x <? n0) eqn:Hlt; eauto.
+    destruct (x <? n0) eqn:Hlt; eauto.
 Qed.
 
 Lemma successor_smaller_right_after_delete :
@@ -226,8 +226,8 @@ Proof.
     destruct (n =? m) eqn:Heq.
     +  apply Nat.eqb_eq in Heq; subst. lia.
     +  assert (m <? n = true) as Hlt by (apply Nat.ltb_lt; lia).
-      rewrite Hlt; simpl.
-      constructor; try eauto.
+       rewrite Hlt; simpl.
+       constructor; try eauto.
 Qed.
 
 Hint Resolve smaller_delete greater_delete : core.
@@ -236,17 +236,15 @@ Hint Resolve successor_smaller_right_after_delete : core.
 Lemma delete_sorted :
   forall t x, sorted t -> sorted (delete x t).
 Proof.
-  induction t; intros x Hs; simpl.
-  - assumption.
-  - inversion Hs; subst.
-    destruct (n =? x) eqn:Heq.
-    + (* deleting root *)
-      destruct t1; try assumption.
-      * destruct t2; try assumption.
-        -- (* two children *)
-           destruct (successor (node t2_1 n1 t2_2)) eqn:Hsucc; eauto.
-    + (* not deleting root *)
-      destruct (x <? n) eqn:Hlt; constructor; eauto.
+  induction t; intros x Hs; simpl; try assumption.
+  inversion Hs; subst.
+  destruct (n =? x) eqn:Heq.
+  - (* deleting root *)
+    destruct t1; try assumption.
+    destruct t2; try assumption.
+    destruct (successor (node t2_1 n1 t2_2)) eqn:Hsucc; eauto.
+  - (* not deleting root *)
+    destruct (x <? n) eqn:Hlt; constructor; eauto.
 Qed.
 
 Lemma smaller_elem_false :
