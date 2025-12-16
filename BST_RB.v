@@ -109,7 +109,7 @@ Lemma ForallNodes_imp : forall (P Q : nat -> Prop) t,
 Proof.
   induction t; intros.
   - auto.
-  - destruct H as [? [? ?]]. repeat split; auto.
+  - destruct H as [HPk [HFl HFr]]. repeat split; auto.
 Qed.
 
 Lemma ForallNodes_greater : forall (t : tree) (k k0 : nat),

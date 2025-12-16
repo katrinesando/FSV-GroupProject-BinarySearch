@@ -74,10 +74,6 @@ match t with
       elem_of x l 
     else
       elem_of x r
-  (* More concise:
-    (v =? x) || 
-    (if x <? v then elem_of x l else elem_of x r)
-  *)
 end.
 
 (* Positive tests *)
